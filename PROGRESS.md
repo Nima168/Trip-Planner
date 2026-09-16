@@ -68,10 +68,23 @@ All four are committed.
 
 - `.github/workflows/ci.yml` — two jobs, `backend` and `frontend`, both triggered on every push and pull request.
   - `backend`: `actions/setup-python` (3.12) → `pip install -r requirements.txt` → `pytest`.
-  - `frontend`: `actions/setup-node` (20) → `npm ci` → `npm test`.
-- Both jobs' exact commands verified locally before committing the workflow (backend: 47 passed/1 skipped; frontend: `npm ci` clean install + 1 passing test).
+  - `frontend`: `actions/setup-node` (24, matching `jsdom@30`'s `engines` requirement of `^22.22.2 || ^24.15.0 || >=26.0.0`) → `npm ci` → `npm test`.
 - Not sourced from the course reader's §6.3 example (not available in this repo) — written as a conventional two-job workflow instead; worth diffing against the actual §6.3 text if available.
-- Not yet done: actually pushing and confirming the workflow runs green in GitHub's Actions tab (the lab guide's own instruction for this step).
+- Confirmed green on GitHub's Actions tab.
+
+## Pushed to GitHub
+
+- Remote: `https://github.com/Nima168/Trip-Planner` (`origin`), branch `master`.
+- All outstanding work was split into logically-grouped commits before pushing (backend foundation+CRUD, day-conditions/weather proxy, frontend routing+screens, acceptance-criteria tests, CI+frontend test setup, progress log, CI Node-version fix).
+
+## Deployment
+
+**Frontend (Vercel)** — live at https://trip-planner-two-beta.vercel.app/, connected via Vercel's GitHub integration (auto-deploys on push to `master`, Root Directory set to `frontend`, Vite preset). No `VITE_API_BASE_URL` set yet since there's no deployed backend to point at — confirmed (via a headless-browser check) that it still renders correctly and degrades to the "Couldn't reach the server / Retry" state rather than crashing, per `frontend-spec.md`.
+
+**Backend (Docker)** — `backend/Dockerfile`, `backend/entrypoint.sh`, `backend/.dockerignore` added. `python:3.12-slim`, non-root user, `entrypoint.sh` runs `alembic upgrade head` then `exec`s into `uvicorn app.main:app --workers ${WEB_CONCURRENCY:-4}` (honors `$PORT`). `.dockerignore` excludes `.env`/`.venv`/`*.db`/`tests/` — this is what actually keeps the API key out of the image, since without it `COPY . .` would copy a local `.env` straight in.
+- Live-verified: built the image, ran it with the real key via `docker run -e OPENWEATHER_API_KEY=...`, did a full create-trip → create-day → create-activity → real-weather round trip successfully. Confirmed the key appears nowhere in `docker history` or the image filesystem, the app boots fine with no key set (conditions endpoint just degrades to `unavailable`), and 4 uvicorn worker processes actually start.
+- Known caveat, not fixed: SQLite + multiple uvicorn workers means concurrent writes across workers serialize on the same file (occasional "database is locked" under real concurrent load) — acceptable at this project's scope, worth knowing if that changes. The SQLite file also lives in the container's filesystem and won't persist across redeploys without a mounted volume.
+- Not yet done: actually deploying this image to a cloud provider (Step 14 is Dockerfile-only so far), then setting `VITE_API_BASE_URL` on Vercel to the real deployed backend URL and confirming the deployed frontend can reach it end to end.
 
 ## Key decisions made along the way
 
@@ -84,5 +97,5 @@ All four are committed.
 
 - Backend: share-link (owner + public), cascade/business-rule hardening tests.
 - Frontend: weather/map widget, share-link generation, Share View screen, broader test coverage beyond the one CI-smoke test.
-- CI: push and confirm the workflow actually runs green on GitHub.
+- Deployment: actually deploy the backend image to a cloud provider, wire `VITE_API_BASE_URL` on Vercel to it, confirm the deployed frontend reaches the deployed backend.
 - Final end-to-end manual pass once all pieces exist.

@@ -1,9 +1,13 @@
+import { Route, Routes } from 'react-router-dom'
+import TripList from './pages/TripList.jsx'
+import ItineraryEditor from './pages/ItineraryEditor.jsx'
+
 function App() {
   return (
-    <div style={{ textAlign: 'center', marginTop: '4rem', fontFamily: 'sans-serif' }}>
-      <h1>Trip Planner</h1>
-      <p>Frontend placeholder — coming soon.</p>
-    </div>
+    <Routes>
+      <Route path="/" element={<TripList />} />
+      <Route path="/trips/:tripId" element={<ItineraryEditor />} />
+    </Routes>
   )
 }
 

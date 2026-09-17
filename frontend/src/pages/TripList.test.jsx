@@ -14,12 +14,12 @@ beforeEach(() => {
   )
 })
 
-test('renders the Trips heading', () => {
+test('renders the Trip Planner heading', () => {
   render(
     <MemoryRouter>
       <TripList />
     </MemoryRouter>
   )
 
-  expect(screen.getByRole('heading', { name: 'Trips' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Trip Planner' })).toBeInTheDocument()
 })

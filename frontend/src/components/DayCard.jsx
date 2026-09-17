@@ -1,15 +1,22 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { deleteActivity } from '../api/activities'
 import { deleteDay } from '../api/days'
 import ActivityForm from './ActivityForm'
+import ConditionsWidget from './ConditionsWidget'
 
-function ActivityRow({ tripId, dayId, activity, onUpdated, onDeleted }) {
+function ActivityRow({ tripId, dayId, activity, onUpdated, onDeleted, readOnly }) {
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [error, setError] = useState(null)
 
+  useEffect(() => {
+    if (!confirmingDelete) return
+    const timer = setTimeout(() => setConfirmingDelete(false), 4000)
+    return () => clearTimeout(timer)
+  }, [confirmingDelete])
+
   async function handleDelete() {
-    if (!window.confirm(`Delete activity "${activity.title}"?`)) return
     setDeleting(true)
     setError(null)
     try {
@@ -18,6 +25,7 @@ function ActivityRow({ tripId, dayId, activity, onUpdated, onDeleted }) {
     } catch (err) {
       setError(err.message)
       setDeleting(false)
+      setConfirmingDelete(false)
     }
   }
 
@@ -45,30 +53,62 @@ function ActivityRow({ tripId, dayId, activity, onUpdated, onDeleted }) {
         {activity.location && <div className="trip-card-meta">{activity.location}</div>}
         {error && <div className="field-error">{error}</div>}
       </div>
-      <div className="activity-actions">
-        <button className="btn" onClick={() => setEditing(true)}>
-          Edit
-        </button>
-        <button className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
-          {deleting ? 'Deleting…' : 'Delete'}
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="activity-actions">
+          {confirmingDelete ? (
+            <span className="confirm-inline">
+              <span className="confirm-inline-label">Delete?</span>
+              <button className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Yes'}
+              </button>
+              <button
+                className="btn"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <>
+              <button className="btn" onClick={() => setEditing(true)}>
+                Edit
+              </button>
+              <button className="btn btn-danger" onClick={() => setConfirmingDelete(true)}>
+                Delete
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </li>
   )
 }
 
-export default function DayCard({ tripId, day, onUpdated, onDeleted }) {
+export default function DayCard({
+  tripId,
+  shareToken,
+  day,
+  onUpdated = () => {},
+  onDeleted = () => {},
+  readOnly = false,
+}) {
   const [addingActivity, setAddingActivity] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!confirmingDelete) return
+    const timer = setTimeout(() => setConfirmingDelete(false), 5000)
+    return () => clearTimeout(timer)
+  }, [confirmingDelete])
 
   function updateActivities(activities) {
     onUpdated({ ...day, activities })
   }
 
   async function handleDeleteDay() {
-    if (!window.confirm(`Delete this day (${day.date})? Its activities will be removed too.`))
-      return
     setDeleting(true)
     setError(null)
     try {
@@ -77,6 +117,7 @@ export default function DayCard({ tripId, day, onUpdated, onDeleted }) {
     } catch (err) {
       setError(err.message)
       setDeleting(false)
+      setConfirmingDelete(false)
     }
   }
 
@@ -91,17 +132,37 @@ export default function DayCard({ tripId, day, onUpdated, onDeleted }) {
               {day.start_time ?? '?'}–{day.end_time ?? '?'}
             </span>
           )}
+          {day.location && <div className="trip-card-meta">{day.location}</div>}
           {day.notes && <div className="trip-card-meta">{day.notes}</div>}
         </div>
-        <button className="btn btn-danger" onClick={handleDeleteDay} disabled={deleting}>
-          {deleting ? 'Deleting…' : 'Delete Day'}
-        </button>
+        {!readOnly &&
+          (confirmingDelete ? (
+            <span className="confirm-inline">
+              <span className="confirm-inline-label">Delete day? Activities go too.</span>
+              <button className="btn btn-danger" onClick={handleDeleteDay} disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Yes'}
+              </button>
+              <button
+                className="btn"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button className="btn btn-danger" onClick={() => setConfirmingDelete(true)}>
+              Delete Day
+            </button>
+          ))}
       </div>
       {error && <div className="error-banner">{error}</div>}
 
+      <ConditionsWidget tripId={tripId} dayId={day.id} shareToken={shareToken} />
+
       {day.activities.length === 0 ? (
         <div className="empty-state">
-          <p>No activities yet — add one.</p>
+          <p>No activities yet{!readOnly && ' — add one'}.</p>
         </div>
       ) : (
         <ul className="trip-list">
@@ -111,6 +172,7 @@ export default function DayCard({ tripId, day, onUpdated, onDeleted }) {
               tripId={tripId}
               dayId={day.id}
               activity={activity}
+              readOnly={readOnly}
               onUpdated={(updated) =>
                 updateActivities(
                   day.activities.map((a) => (a.id === updated.id ? updated : a))
@@ -124,21 +186,22 @@ export default function DayCard({ tripId, day, onUpdated, onDeleted }) {
         </ul>
       )}
 
-      {addingActivity ? (
-        <ActivityForm
-          tripId={tripId}
-          dayId={day.id}
-          onSaved={(created) => {
-            updateActivities([...day.activities, created])
-            setAddingActivity(false)
-          }}
-          onCancel={() => setAddingActivity(false)}
-        />
-      ) : (
-        <button className="btn" onClick={() => setAddingActivity(true)}>
-          + Add Activity
-        </button>
-      )}
+      {!readOnly &&
+        (addingActivity ? (
+          <ActivityForm
+            tripId={tripId}
+            dayId={day.id}
+            onSaved={(created) => {
+              updateActivities([...day.activities, created])
+              setAddingActivity(false)
+            }}
+            onCancel={() => setAddingActivity(false)}
+          />
+        ) : (
+          <button className="btn" onClick={() => setAddingActivity(true)}>
+            + Add Activity
+          </button>
+        ))}
     </div>
   )
 }

@@ -32,6 +32,7 @@ def create_day(trip_id: str, payload: DayCreate, db: Session = Depends(get_db)):
         date=payload.date,
         start_time=payload.start_time,
         end_time=payload.end_time,
+        location=payload.location,
         notes=payload.notes,
         position=next_position,
     )

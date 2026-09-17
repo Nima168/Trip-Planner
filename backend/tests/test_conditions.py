@@ -142,6 +142,32 @@ def test_conditions_missing_api_key_returns_unavailable_without_calling_provider
     mock_get.assert_not_called()
 
 
+def test_conditions_uses_day_location_over_activity_location(client, monkeypatch):
+    monkeypatch.setattr("app.services.weather.settings.openweather_api_key", "test-key")
+    trip = _create_trip(client)
+    day_resp = client.post(
+        f"/trips/{trip['id']}/days", json={"date": "2026-05-01", "location": "Tokyo"}
+    )
+    day = day_resp.json()
+    _create_activity(client, trip["id"], day["id"], location="Paris")
+
+    mock_response = MagicMock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {
+        "coord": {"lon": 139.69, "lat": 35.68},
+        "weather": [{"description": "clear sky", "icon": "01d"}],
+        "main": {"temp": 20.0},
+    }
+
+    with patch("app.services.weather.httpx.get", return_value=mock_response) as mock_get:
+        resp = client.get(_conditions_url(trip["id"], day["id"]))
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
+    called_params = mock_get.call_args.kwargs["params"]
+    assert called_params["q"] == "Tokyo"
+
+
 def test_conditions_trip_not_found(client):
     resp = client.get(_conditions_url("does-not-exist", "does-not-exist"))
     assert resp.status_code == 404

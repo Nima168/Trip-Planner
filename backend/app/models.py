@@ -29,8 +29,8 @@ class Trip(Base):
     days: Mapped[list["Day"]] = relationship(
         back_populates="trip", cascade="all, delete-orphan", order_by="Day.position"
     )
-    share_link: Mapped["ShareLink | None"] = relationship(
-        back_populates="trip", cascade="all, delete-orphan", uselist=False
+    share_links: Mapped[list["ShareLink"]] = relationship(
+        back_populates="trip", cascade="all, delete-orphan"
     )
 
 
@@ -43,6 +43,7 @@ class Day(Base):
     date: Mapped[date_] = mapped_column(Date, nullable=False)
     start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    location: Mapped[str | None] = mapped_column(String, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     position: Mapped[int] = mapped_column(nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
@@ -79,9 +80,9 @@ class ShareLink(Base):
     __tablename__ = "share_links"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    trip_id: Mapped[str] = mapped_column(String(36), ForeignKey("trips.id"), unique=True, nullable=False)
+    trip_id: Mapped[str] = mapped_column(String(36), ForeignKey("trips.id"), index=True, nullable=False)
     token: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    trip: Mapped["Trip"] = relationship(back_populates="share_link")
+    trip: Mapped["Trip"] = relationship(back_populates="share_links")

@@ -10,13 +10,20 @@ logger = logging.getLogger("app.services.weather")
 _UNAVAILABLE = {"status": "unavailable"}
 
 _WEATHER_URL = "https://api.openweathermap.org/data/2.5/weather"
-_STATIC_MAP_URL = "https://staticmap.openstreetmap.de/staticmap.php"
+_MAP_EMBED_URL = "https://www.openstreetmap.org/export/embed.html"
+_MAP_BBOX_DELTA = 0.01  # degrees; roughly a ~1-2km-wide view around the marker
 
 _APPID_RE = re.compile(r"appid=[^&\s]+")
 
 
 def _redact(text: str) -> str:
     return _APPID_RE.sub("appid=***", text)
+
+
+def _map_embed_url(lat: float, lon: float) -> str:
+    # OpenStreetMap's official embeddable map -- no API key required.
+    bbox = f"{lon - _MAP_BBOX_DELTA},{lat - _MAP_BBOX_DELTA},{lon + _MAP_BBOX_DELTA},{lat + _MAP_BBOX_DELTA}"
+    return f"{_MAP_EMBED_URL}?bbox={bbox}&marker={lat},{lon}"
 
 
 def get_conditions(location: str) -> dict:
@@ -54,10 +61,7 @@ def get_conditions(location: str) -> dict:
             "map": {
                 "lat": lat,
                 "lng": lon,
-                "static_map_url": (
-                    f"{_STATIC_MAP_URL}?center={lat},{lon}&zoom=12&size=400x300"
-                    f"&markers={lat},{lon},red-pushpin"
-                ),
+                "static_map_url": _map_embed_url(lat, lon),
             },
         }
     except httpx.TimeoutException:

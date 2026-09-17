@@ -5,6 +5,7 @@ export default function DayForm({ tripId, day, onSaved, onCancel }) {
   const [date, setDate] = useState(day?.date ?? '')
   const [startTime, setStartTime] = useState(day?.start_time ?? '')
   const [endTime, setEndTime] = useState(day?.end_time ?? '')
+  const [location, setLocation] = useState(day?.location ?? '')
   const [notes, setNotes] = useState(day?.notes ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -20,6 +21,7 @@ export default function DayForm({ tripId, day, onSaved, onCancel }) {
       date,
       start_time: startTime || null,
       end_time: endTime || null,
+      location: location || null,
       notes: notes || null,
     }
 
@@ -30,6 +32,7 @@ export default function DayForm({ tripId, day, onSaved, onCancel }) {
         setDate('')
         setStartTime('')
         setEndTime('')
+        setLocation('')
         setNotes('')
       }
     } catch (err) {
@@ -75,6 +78,16 @@ export default function DayForm({ tripId, day, onSaved, onCancel }) {
         {fieldErrors.end_time && (
           <span className="field-error">End time must be on or after start time.</span>
         )}
+      </div>
+      <div className="field">
+        <label htmlFor={`day-location-${day?.id ?? 'new'}`}>Location</label>
+        <input
+          id={`day-location-${day?.id ?? 'new'}`}
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          placeholder="e.g. Paris"
+          disabled={saving}
+        />
       </div>
       <div className="field">
         <label htmlFor={`day-notes-${day?.id ?? 'new'}`}>Notes</label>

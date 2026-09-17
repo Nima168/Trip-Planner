@@ -27,6 +27,7 @@ Relational schema: `Trip 1—N Day 1—N Activity`, plus `Trip 1—1 ShareLink` 
 | date | date, required | unique within a Trip |
 | start_time | time, nullable | overall start of the day's plan |
 | end_time | time, nullable | overall end of the day's plan |
+| location | string, optional | explicit place reference for this day's maps/weather lookup; independent of any Activity's own `location` |
 | notes | text, optional | |
 | position | int | explicit ordering, independent of `date` sort |
 | created_at / updated_at | timestamp | |
@@ -48,7 +49,7 @@ Relational schema: `Trip 1—N Day 1—N Activity`, plus `Trip 1—1 ShareLink` 
 | Field | Type | Notes |
 |---|---|---|
 | id | PK | |
-| trip_id | FK → Trip, required, unique | one active link per trip |
+| trip_id | FK → Trip, required, indexed (not DB-unique) | a Trip may have multiple rows over time (revoked history + at most one active); "at most one active link per trip" is enforced at the application level, not via a DB constraint — see business rule 6 |
 | token | string, unique, indexed | high-entropy (e.g. UUID4/128-bit random), not a sequential id |
 | created_at | timestamp | |
 | revoked_at | timestamp, nullable | set when the link is regenerated or explicitly revoked |
@@ -62,6 +63,7 @@ Relational schema: `Trip 1—N Day 1—N Activity`, plus `Trip 1—1 ShareLink` 
 5. Deleting a Day cascades to delete its Activities.
 6. Share link generation is idempotent per Trip: if an active (non-revoked) token exists, return it; otherwise create one. Explicitly regenerating a link revokes the old token (it stops resolving) and issues a new one.
 7. Not enforced in this MVP (explicitly out of scope, flagging so it isn't assumed silently handled): Activity times are *not* validated against their parent Day's `start_time`/`end_time` window. Revisit if the product needs that constraint.
+8. A Day's maps/weather location is resolved as: `Day.location` if set, else the first Activity's `location` for that day (ordered by `position`), else no location (the day-conditions endpoint returns `unavailable` without an upstream call). This exists because a Day's activities can span multiple places, so `Day.location` is the intended primary source — the Activity-based fallback exists only to cover Days created before this field existed.
 
 ## 3. Non-functional requirements
 

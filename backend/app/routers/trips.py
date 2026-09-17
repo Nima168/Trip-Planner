@@ -35,7 +35,7 @@ def _to_summary(trip: Trip) -> TripSummary:
     )
 
 
-def _to_detail(trip: Trip) -> TripDetail:
+def to_trip_detail(trip: Trip) -> TripDetail:
     start_date, end_date = _date_range(trip)
     return TripDetail(
         id=trip.id,
@@ -60,13 +60,13 @@ def create_trip(payload: TripCreate, db: Session = Depends(get_db)):
     db.add(trip)
     db.commit()
     db.refresh(trip)
-    return _to_detail(trip)
+    return to_trip_detail(trip)
 
 
 @router.get("/{trip_id}", response_model=TripDetail)
 def get_trip(trip_id: str, db: Session = Depends(get_db)):
     trip = get_trip_or_404(db, trip_id)
-    return _to_detail(trip)
+    return to_trip_detail(trip)
 
 
 @router.delete("/{trip_id}", status_code=status.HTTP_204_NO_CONTENT)

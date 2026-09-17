@@ -14,7 +14,7 @@ Covers every endpoint `frontend-spec.md` needs against the data model in `backen
   ```
   `fields` is present only for `422` field-level errors; omitted otherwise. Codes used below: `VALIDATION_ERROR` (422), `NOT_FOUND` (404), `CONFLICT` (409), `INTERNAL_ERROR` (500, unexpected only).
 - **Design decision — "Save" maps to per-resource CRUD, not a bulk trip save.** `frontend-spec.md`'s "Save" action is read here as submitting whichever Day or Activity form is open, calling that resource's own create/update endpoint. This matches `backend-spec.md`'s rules being phrased per-entity ("a Day cannot be saved with...", "an Activity's own start/end..."). Flag if a single bulk `PUT /trips/{id}` with the full nested tree was intended instead — that's a different contract.
-- **Open item — Day has no `location` field in `backend-spec.md`.** The day-conditions endpoint needs a location to query. Until `backend-spec.md` adds one, the backend resolves location as: `Day.location` if such a field is added, else the first Activity's `location` for that day, else `{"status": "unavailable"}` with no lookup attempted. Worth a follow-up to `backend-spec.md`.
+- **Day location resolution.** `Day` has its own optional `location` field (`backend-spec.md`), used as the primary source for the day-conditions endpoint. If unset, the backend falls back to the first Activity's `location` for that day (by `position`); if that's also unset, no upstream lookup is attempted and the endpoint returns `{"status": "unavailable"}`.
 - **Pagination:** not implemented in this MVP; `GET /trips` returns the full list. Fine at expected scale (single-tenant, no auth); revisit if that changes.
 
 ---
@@ -64,6 +64,7 @@ Fetch one trip with its full nested itinerary, for the Itinerary Editor.
       {
         "id": "uuid", "trip_id": "uuid", "date": "YYYY-MM-DD",
         "start_time": "HH:MM" | null, "end_time": "HH:MM" | null,
+        "location": "string" | null,
         "notes": "string" | null, "position": 0,
         "created_at": "ISO8601", "updated_at": "ISO8601",
         "activities": [
@@ -96,7 +97,7 @@ Add a day to a trip.
 
 - **Request**
   ```json
-  { "date": "YYYY-MM-DD", "start_time": "HH:MM" | null, "end_time": "HH:MM" | null, "notes": "string" | null }
+  { "date": "YYYY-MM-DD", "start_time": "HH:MM" | null, "end_time": "HH:MM" | null, "location": "string" | null, "notes": "string" | null }
   ```
   `position` is not client-supplied; the server appends it after the current last day.
 - **201** — the created Day object (shape as nested above, `activities: []`).
@@ -105,7 +106,7 @@ Add a day to a trip.
 - **409** `CONFLICT` — a Day already exists for this trip on that `date`.
 
 ### `PATCH /trips/{trip_id}/days/{day_id}`
-Partial update. Any subset of `date`, `start_time`, `end_time`, `notes`.
+Partial update. Any subset of `date`, `start_time`, `end_time`, `location`, `notes`.
 
 - **Request:** same fields as create, all optional.
 - **200** — the updated Day object.

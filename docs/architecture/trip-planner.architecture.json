@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Trip Planner Architecture",
+    "output": "trip-planner.architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "owner", "type": "external", "label": "Trip Owner", "sublabel": "Browser", "pos": [40, 270], "size": [130, 64] },
+    { "id": "viewer", "type": "external", "label": "Share Viewer", "sublabel": "Anyone with link", "pos": [280, 450], "size": [150, 64] },
+    { "id": "spa", "type": "frontend", "label": "React SPA", "sublabel": "Vite · React Router", "pos": [280, 270], "size": [150, 64], "tag": "Vercel" },
+    { "id": "osm", "type": "external", "label": "OpenStreetMap", "sublabel": "embedded map", "pos": [280, 90], "size": [150, 64] },
+    { "id": "api", "type": "backend", "label": "FastAPI API", "sublabel": "trips · days · activities · share", "pos": [560, 270], "size": [170, 64], "tag": "Docker" },
+    { "id": "conditions", "type": "backend", "label": "Conditions Service", "sublabel": "location + weather", "pos": [560, 90], "size": [170, 64] },
+    { "id": "db", "type": "database", "label": "SQL Database", "sublabel": "SQLite by default", "pos": [860, 270], "size": [150, 64], "tag": "Alembic migrations" },
+    { "id": "weather", "type": "external", "label": "OpenWeather", "sublabel": "weather API", "pos": [860, 90], "size": [150, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Backend container", "wraps": ["api", "conditions"] }
+  ],
+  "connections": [
+    { "id": "owner-to-spa", "from": "owner", "to": "spa", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "viewer-to-spa", "from": "viewer", "to": "spa", "label": "/share/:token", "fromSide": "top", "toSide": "bottom" },
+    { "id": "spa-to-api", "from": "spa", "to": "api", "label": "REST / JSON", "variant": "emphasis" },
+    { "id": "api-to-db", "from": "api", "to": "db", "label": "SQLAlchemy" },
+    { "id": "api-to-conditions", "from": "api", "to": "conditions", "label": "day conditions", "fromSide": "top", "toSide": "bottom" },
+    { "id": "conditions-to-weather", "from": "conditions", "to": "weather", "label": "HTTPS + API key", "variant": "dashed" },
+    { "id": "spa-to-osm", "from": "spa", "to": "osm", "label": "map iframe", "variant": "dashed", "fromSide": "top", "toSide": "bottom" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Frontend", "items": ["React 19 SPA with three routes: trip list, itinerary editor, public share view", "API client wraps fetch with typed errors"] },
+    { "dot": "emerald", "title": "Backend", "items": ["FastAPI routers for trips, days, activities, conditions and share links", "Public share routes authorize by revocable token"] },
+    { "dot": "amber", "title": "Data and external", "items": ["SQLAlchemy models: trips, days, activities, share_links", "Weather failures degrade to status: unavailable"] }
+  ]
+}

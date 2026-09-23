@@ -1,24 +1,17 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from app.schemas.common import TimeHHMM
+from pydantic import BaseModel, ConfigDict
 
 
+# `text` is intentionally unconstrained here: an empty/whitespace-only value is a
+# business-rule error (400 per api-contract-spec.md), not a request-shape error (422),
+# so it's checked explicitly in the router rather than via a pydantic validator.
 class ActivityCreate(BaseModel):
-    title: str = Field(min_length=1)
-    start_time: TimeHHMM
-    end_time: TimeHHMM
-    location: str | None = None
-    notes: str | None = None
+    text: str
 
 
 class ActivityUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1)
-    start_time: TimeHHMM | None = None
-    end_time: TimeHHMM | None = None
-    location: str | None = None
-    notes: str | None = None
+    text: str
 
 
 class ActivityOut(BaseModel):
@@ -26,11 +19,6 @@ class ActivityOut(BaseModel):
 
     id: str
     day_id: str
-    title: str
-    start_time: TimeHHMM
-    end_time: TimeHHMM
-    location: str | None
-    notes: str | None
-    position: int
+    text: str
+    sort_order: int
     created_at: datetime
-    updated_at: datetime

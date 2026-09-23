@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Musafir Travels — Phase 6 (AWS Infrastructure) Verification Report</title>
+<style>
+  :root {
+    --bg: #0f1420; --surface: #161d2e; --surface2: #1d2740; --border: #2a3654;
+    --text: #e7ecf7; --text-muted: #93a0bf; --primary: #5b8def; --ok: #3ecf8e;
+    --warn: #f2b84b; --bad: #f2554b; --mono: 'Consolas','SF Mono',Menlo,monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+  }
+  header { padding: 28px 32px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, var(--surface2), var(--bg)); }
+  header h1 { margin: 0 0 6px; font-size: 22px; }
+  header p { margin: 0; color: var(--text-muted); font-size: 14px; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 32px 80px; }
+  section { margin-bottom: 36px; }
+  h2 {
+    font-size: 15px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text-muted); border-bottom: 1px solid var(--border);
+    padding-bottom: 8px; margin: 0 0 16px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  code, .mono { font-family: var(--mono); font-size: 13px; background: var(--surface2); padding: 1px 6px; border-radius: 4px; }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-size: 12.5px; }
+  ul, ol { padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pass { background: rgba(62,207,142,.15); color: var(--ok); }
+  .fail { background: rgba(242,85,75,.15); color: var(--bad); }
+  .unverified { background: rgba(242,184,75,.15); color: var(--warn); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
+  .callout { border-left: 3px solid var(--warn); background: rgba(242,184,75,.08); padding: 12px 16px; border-radius: 0 8px 8px 0; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+  .status-list td:first-child { white-space: nowrap; font-weight: 600; }
+  svg text { fill: var(--text); font-family: -apple-system, Segoe UI, sans-serif; }
+  .diagram-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Musafir Travels — Phase 6: AWS Infrastructure (Terraform)</h1>
+  <p>Verification report generated 2026-09-22 · Branch <code>trip_planner.AI</code> · Plan: <code>cheeky-inventing-thacker.md</code></p>
+</header>
+<main>
+
+<section>
+  <h2>1. Original Request</h2>
+  <div class="card">
+    <p>Continuing the previously approved 8-phase implementation plan for rebuilding the trip-planner app against <code>specs_new/</code> ("Musafir Travels"). After Phases 1–5 (backend rewrite, frontend rewrite, AI chat flow) were implemented and the user manually verified the UI, the user replied <strong>"yes please go to next step"</strong> — i.e. proceed to <strong>Phase 6: AWS Infrastructure (Terraform)</strong>, which stands up the VPC/RDS/ECS/ALB/CloudFront/IAM-OIDC stack described in <code>specs_new/backend-spec.md</code> §9.</p>
+  </div>
+</section>
+
+<section>
+  <h2>2. Implementation Summary</h2>
+  <p>Created a new <code>infra/</code> Terraform root at the repo root, matching the plan's Phase 6 layout exactly: a <code>environments/prod</code> root module wiring together seven reusable modules (<code>network</code>, <code>database</code>, <code>ecr</code>, <code>ecs</code>, <code>alb</code>, <code>cdn</code>, <code>iam-oidc</code>), plus three operational shell scripts and a README runbook.</p>
+  <ul>
+    <li><strong>network</strong> — VPC with public subnets (ALB + single NAT Gateway) and private subnets (ECS + RDS), one NAT Gateway shared across AZs to control cost.</li>
+    <li><strong>database</strong> — RDS Postgres (<code>db.t4g.micro</code>, free-tier eligible), reads its master password from the <em>persistent</em> Secrets Manager secret (never <code>random_password</code>) so it survives destroy/restore cycles; accepts a <code>restore_from_snapshot</code> variable for the restore flow.</li>
+    <li><strong>ecr</strong> — one image repository with a lifecycle policy capping retained images.</li>
+    <li><strong>ecs</strong> — Fargate cluster/service/task definition, CloudWatch log group, execution role (ECR pull + Secrets Manager read) and a currently-empty task role. The service ignores <code>task_definition</code>/<code>desired_count</code> drift so the CI/CD deploy step (Phase 7, not yet built) can update it directly without fighting Terraform.</li>
+    <li><strong>alb</strong> — HTTP:80 listener + target group health-checked against <code>/health</code>.</li>
+    <li><strong>cdn</strong> — CloudFront in front of the ALB, terminating HTTPS on the default <code>*.cloudfront.net</code> certificate (caching disabled, all headers/cookies/query strings forwarded — this fronts an API, not static content).</li>
+    <li><strong>iam-oidc</strong> — GitHub Actions OIDC provider + a narrowly-scoped deploy role (ECR push, ECS deploy, <code>iam:PassRole</code> to the two ECS roles, Secrets Manager read) — no static AWS keys in GitHub.</li>
+  </ul>
+  <p>The root module also creates the Secrets Manager entries the ECS task consumes: <code>DATABASE_URL</code> (built from the database module's output + the persistent password), a fresh <code>JWT_SECRET</code> (regenerates on every apply — acceptable per spec, it only logs users out), and <code>AI_API_KEY</code> (passed in via a sensitive variable). A standalone <code>aws_security_group_rule</code> in the root module links ECS→RDS on port 5432, deliberately kept out of the <code>database</code> module to avoid a module dependency cycle (RDS's security group needs ECS's SG id; ECS's task definition needs RDS's connection string).</p>
+  <p><code>scripts/backup.sh</code> / <code>destroy.sh</code> / <code>restore.sh</code> implement the manual-RDS-snapshot backup/restore contract from <code>backend-spec.md</code> §9: snapshot-before-destroy (refusing to destroy if the snapshot doesn't complete), and restore-from-latest-snapshot on the next apply, with the two post-restore manual follow-ups (redeploy for ECR, update Vercel's API base URL for the new CloudFront domain) printed at the end of <code>restore.sh</code>.</p>
+</section>
+
+<section>
+  <h2>3. Files Changed</h2>
+  <p>All files below are new; nothing pre-existing was modified.</p>
+  <table>
+    <tr><th>Path</th><th>Purpose</th></tr>
+    <tr><td class="mono">infra/README.md</td><td>Bootstrap + operational runbook</td></tr>
+    <tr><td class="mono">infra/.gitignore</td><td>Excludes .terraform/, tfstate, tfvars, backend.hcl</td></tr>
+    <tr><td class="mono">infra/environments/prod/main.tf</td><td>Root module: providers, secrets, module wiring</td></tr>
+    <tr><td class="mono">infra/environments/prod/variables.tf</td><td>Root input variables</td></tr>
+    <tr><td class="mono">infra/environments/prod/outputs.tf</td><td>api_base_url, ARNs, endpoints</td></tr>
+    <tr><td class="mono">infra/environments/prod/backend.hcl.example</td><td>S3 backend config template</td></tr>
+    <tr><td class="mono">infra/environments/prod/terraform.tfvars.example</td><td>Variable-values template</td></tr>
+    <tr><td class="mono">infra/environments/prod/.terraform.lock.hcl</td><td>Provider version lock (committed)</td></tr>
+    <tr><td class="mono">infra/modules/network/{main,variables,outputs}.tf</td><td>VPC, subnets, NAT, route tables</td></tr>
+    <tr><td class="mono">infra/modules/database/{main,variables,outputs}.tf</td><td>RDS Postgres, subnet group, security group</td></tr>
+    <tr><td class="mono">infra/modules/ecr/{main,variables,outputs}.tf</td><td>ECR repository + lifecycle policy</td></tr>
+    <tr><td class="mono">infra/modules/ecs/{main,variables,outputs}.tf</td><td>Cluster, task def, service, IAM roles, logs</td></tr>
+    <tr><td class="mono">infra/modules/alb/{main,variables,outputs}.tf</td><td>ALB, target group, HTTP listener</td></tr>
+    <tr><td class="mono">infra/modules/cdn/{main,variables,outputs}.tf</td><td>CloudFront distribution</td></tr>
+    <tr><td class="mono">infra/modules/iam-oidc/{main,variables,outputs}.tf</td><td>GitHub OIDC provider + deploy role</td></tr>
+    <tr><td class="mono">infra/scripts/backup.sh</td><td>Manual RDS snapshot + wait</td></tr>
+    <tr><td class="mono">infra/scripts/destroy.sh</td><td>backup.sh then terraform destroy</td></tr>
+    <tr><td class="mono">infra/scripts/restore.sh</td><td>Latest snapshot → terraform apply</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>Architecture</h2>
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 900 480" width="100%" xmlns="http://www.w3.org/2000/svg" font-size="12.5">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#5b8def"/>
+        </marker>
+      </defs>
+      <!-- Vercel -->
+      <rect x="20" y="30" width="140" height="60" rx="8" fill="#1d2740" stroke="#2a3654"/>
+      <text x="90" y="55" text-anchor="middle" font-weight="600">Vercel</text>
+      <text x="90" y="72" text-anchor="middle" fill="#93a0bf" font-size="11">React frontend (HTTPS)</text>
+
+      <!-- CloudFront -->
+      <rect x="230" y="30" width="160" height="60" rx="8" fill="#1d2740" stroke="#2a3654"/>
+      <text x="310" y="55" text-anchor="middle" font-weight="600">CloudFront</text>
+      <text x="310" y="72" text-anchor="middle" fill="#93a0bf" font-size="11">*.cloudfront.net (HTTPS)</text>
+
+      <!-- ALB -->
+      <rect x="460" y="30" width="150" height="60" rx="8" fill="#1d2740" stroke="#2a3654"/>
+      <text x="535" y="55" text-anchor="middle" font-weight="600">ALB</text>
+      <text x="535" y="72" text-anchor="middle" fill="#93a0bf" font-size="11">HTTP:80, /health check</text>
+
+      <!-- VPC box -->
+      <rect x="440" y="130" width="440" height="300" rx="10" fill="none" stroke="#2a3654" stroke-dasharray="4 3"/>
+      <text x="460" y="150" fill="#93a0bf" font-size="11">VPC</text>
+
+      <!-- Public subnet -->
+      <rect x="460" y="160" width="180" height="70" rx="8" fill="#161d2e" stroke="#2a3654"/>
+      <text x="550" y="180" text-anchor="middle" fill="#93a0bf" font-size="11">Public subnets</text>
+      <text x="550" y="198" text-anchor="middle" fill="#93a0bf" font-size="11">ALB + NAT Gateway</text>
+
+      <!-- Private subnet: ECS -->
+      <rect x="460" y="250" width="180" height="80" rx="8" fill="#161d2e" stroke="#2a3654"/>
+      <text x="550" y="272" text-anchor="middle" font-weight="600">ECS Fargate</text>
+      <text x="550" y="290" text-anchor="middle" fill="#93a0bf" font-size="11">backend task</text>
+      <text x="550" y="306" text-anchor="middle" fill="#93a0bf" font-size="11">(private subnet)</text>
+
+      <!-- Private subnet: RDS -->
+      <rect x="460" y="350" width="180" height="70" rx="8" fill="#161d2e" stroke="#2a3654"/>
+      <text x="550" y="372" text-anchor="middle" font-weight="600">RDS Postgres</text>
+      <text x="550" y="390" text-anchor="middle" fill="#93a0bf" font-size="11">private, SG-scoped to ECS</text>
+
+      <!-- Secrets Manager -->
+      <rect x="680" y="250" width="180" height="80" rx="8" fill="#161d2e" stroke="#2a3654"/>
+      <text x="770" y="272" text-anchor="middle" font-weight="600">Secrets Manager</text>
+      <text x="770" y="290" text-anchor="middle" fill="#93a0bf" font-size="11">DATABASE_URL, JWT_SECRET,</text>
+      <text x="770" y="305" text-anchor="middle" fill="#93a0bf" font-size="11">AI_API_KEY, DB master pw</text>
+
+      <!-- ECR -->
+      <rect x="680" y="350" width="180" height="70" rx="8" fill="#161d2e" stroke="#2a3654"/>
+      <text x="770" y="372" text-anchor="middle" font-weight="600">ECR</text>
+      <text x="770" y="390" text-anchor="middle" fill="#93a0bf" font-size="11">backend image</text>
+
+      <!-- GitHub Actions -->
+      <rect x="20" y="350" width="180" height="80" rx="8" fill="#1d2740" stroke="#2a3654"/>
+      <text x="110" y="372" text-anchor="middle" font-weight="600">GitHub Actions</text>
+      <text x="110" y="390" text-anchor="middle" fill="#93a0bf" font-size="11">OIDC → deploy role</text>
+      <text x="110" y="405" text-anchor="middle" fill="#93a0bf" font-size="11">(Phase 7, not yet built)</text>
+
+      <!-- arrows -->
+      <line x1="160" y1="60" x2="228" y2="60" stroke="#5b8def" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <line x1="390" y1="60" x2="458" y2="60" stroke="#5b8def" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <line x1="535" y1="90" x2="535" y2="128" stroke="#5b8def" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <line x1="550" y1="230" x2="550" y2="248" stroke="#5b8def" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <line x1="550" y1="330" x2="550" y2="348" stroke="#5b8def" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <line x1="640" y1="290" x2="678" y2="290" stroke="#5b8def" stroke-width="1.6" marker-end="url(#arrow)"/>
+      <line x1="200" y1="390" x2="678" y2="385" stroke="#5b8def" stroke-width="1.6" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+      <line x1="110" y1="350" x2="550" y2="252" stroke="#5b8def" stroke-width="1.6" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+    </svg>
+    <p style="color:var(--text-muted); font-size:12px; margin-top:8px;">Solid arrows: request path (Vercel → CloudFront → ALB → ECS → RDS, and ECS reading secrets). Dashed arrows: deploy-time paths (GitHub Actions pushing to ECR / updating ECS — Phase 7, not built in this session). Diagram hand-authored as inline SVG; no Archify integration is available in this session.</p>
+  </div>
+</section>
+
+<section>
+  <h2>4. Acceptance Criteria</h2>
+  <table class="status-list">
+    <tr><th>Criterion</th><th>Status</th></tr>
+    <tr><td><code>infra/</code> layout matches the approved plan (environments/prod + 7 modules + scripts)</td><td><span class="badge pass">DONE</span></td></tr>
+    <tr><td>network: VPC, public/private subnets, single NAT Gateway</td><td><span class="badge pass">DONE</span></td></tr>
+    <tr><td>database: RDS reads persistent master-password secret, not <code>random_password</code>; supports snapshot restore</td><td><span class="badge pass">DONE</span></td></tr>
+    <tr><td>ecs: cluster, service, task def, execution + task IAM roles</td><td><span class="badge pass">DONE</span></td></tr>
+    <tr><td>alb: HTTP:80 listener, target group, <code>/health</code> check</td><td><span class="badge pass">DONE</span></td></tr>
+    <tr><td>cdn: CloudFront in front of ALB, HTTPS via default cert</td><td><span class="badge pass">DONE</span></td></tr>
+    <tr><td>iam-oidc: GitHub OIDC provider + scoped deploy role</td><td><span class="badge pass">DONE</span></td></tr>
+    <tr><td><code>scripts/{backup,destroy,restore}.sh</code> implement the exact §9 contract</td><td><span class="badge pass">DONE</span></td></tr>
+    <tr><td><code>README.md</code>: bootstrap + destroy/restore runbook</td><td><span class="badge pass">DONE</span></td></tr>
+    <tr><td><code>terraform plan</code>/<code>apply</code> clean against real AWS</td><td><span class="badge unverified">UNVERIFIED</span></td></tr>
+    <tr><td><code>/health</code> reachable over HTTPS via the CloudFront URL</td><td><span class="badge unverified">UNVERIFIED</span></td></tr>
+    <tr><td>RDS reachable only from ECS's security group</td><td><span class="badge unverified">UNVERIFIED (code review only)</span></td></tr>
+    <tr><td><code>backup.sh</code> → <code>destroy.sh</code> → <code>restore.sh</code> round-trip preserves data</td><td><span class="badge unverified">UNVERIFIED</span></td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>5. Tests Executed and Results</h2>
+  <table>
+    <tr><th>Check</th><th>Result</th><th>Notes</th></tr>
+    <tr><td class="mono">python brace/paren/quote balance scan (24 .tf files)</td><td><span class="badge pass">PASS</span></td><td>Cheap sanity pass before a real Terraform binary was available</td></tr>
+    <tr><td class="mono">terraform fmt -recursive -check</td><td><span class="badge pass">PASS</span></td><td>Failed on first run (alignment only, 5 files) — fixed by running <code>terraform fmt -recursive</code></td></tr>
+    <tr><td class="mono">terraform init -backend=false</td><td><span class="badge pass">PASS</span></td><td>All 7 modules + <code>hashicorp/aws</code> 5.100.0 + <code>hashicorp/random</code> 3.9.1 resolved cleanly</td></tr>
+    <tr><td class="mono">terraform validate</td><td><span class="badge pass">PASS</span></td><td>Failed twice first — see Known Issues; fixed by recomputing the OIDC thumbprints from a live TLS handshake</td></tr>
+    <tr><td class="mono">terraform plan (against real AWS)</td><td><span class="badge unverified">NOT RUN</span></td><td>No AWS account/credentials available in this session</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>6. Exact Page / URL to Test</h2>
+  <div class="card">
+    <p>Nothing is deployed yet, so there is no live URL today. Once the user completes the manual steps in Section 7, the URL to test is:</p>
+    <pre>https://&lt;cloudfront-domain&gt;/health</pre>
+    <p style="color:var(--text-muted)">Value of <code>&lt;cloudfront-domain&gt;</code> comes from <code>terraform output cloudfront_domain_name</code> after apply. The frontend itself should be pointed at <code>terraform output api_base_url</code> (which is <code>https://&lt;cloudfront-domain&gt;/api/v1</code>) as its <code>VITE_API_BASE_URL</code>.</p>
+  </div>
+</section>
+
+<section>
+  <h2>7. Step-by-Step Manual Verification</h2>
+  <p class="callout">These steps touch a real AWS account and cost money while running (NAT Gateway + ALB bill hourly). They were intentionally <strong>not</strong> run by the assistant — AWS account access wasn't available in this session, and creating/destroying real cloud infrastructure is exactly the kind of hard-to-reverse, cost-incurring action that should be confirmed and run by you.</p>
+  <ol>
+    <li>Run <code>aws sts get-caller-identity</code> to confirm your AWS CLI is authenticated against the right account.</li>
+    <li>Follow <code>infra/README.md</code>'s one-time bootstrap: create the S3 state bucket + DynamoDB lock table, and the persistent <code>musafir/db-master-password-persistent</code> secret.</li>
+    <li>Copy <code>backend.hcl.example</code> → <code>backend.hcl</code> and <code>terraform.tfvars.example</code> → <code>terraform.tfvars</code>; fill in real values, including <code>github_oidc_sub</code> (obtained via the debug workflow step documented in the README — don't guess it).</li>
+    <li>Run <code>terraform init -backend-config=backend.hcl</code> from <code>infra/environments/prod</code>.</li>
+    <li>Run <code>terraform plan -var-file=terraform.tfvars</code> and read through the plan.</li>
+    <li>Run <code>terraform apply -var-file=terraform.tfvars</code>.</li>
+    <li><code>curl -i https://&lt;cloudfront-domain&gt;/health</code>.</li>
+    <li>Check the ECS service reaches <code>steadyState</code> in the AWS Console or via <code>aws ecs describe-services</code>.</li>
+    <li>From a machine outside the VPC, confirm you <em>cannot</em> reach the RDS endpoint on 5432 (connection should time out, not refuse) — proves the private-only security group is working.</li>
+    <li>Run <code>infra/scripts/backup.sh</code>, then <code>infra/scripts/destroy.sh</code>, then <code>infra/scripts/restore.sh</code> to prove the full round-trip, following the two printed manual follow-ups at the end of the restore.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>8. Expected Results</h2>
+  <table>
+    <tr><th>Step</th><th>Expected result</th></tr>
+    <tr><td>1</td><td>Returns your account id/ARN, no auth error</td></tr>
+    <tr><td>2</td><td>Bucket + table + secret exist; no errors from the <code>aws</code> CLI commands</td></tr>
+    <tr><td>4</td><td><code>Terraform has been successfully initialized!</code></td></tr>
+    <tr><td>5</td><td>Plan shows resource creation only (no destructive changes) on a first run</td></tr>
+    <tr><td>6</td><td>Apply completes; outputs print <code>api_base_url</code>, <code>ecr_repository_url</code>, etc.</td></tr>
+    <tr><td>7</td><td><code>200 OK</code> from the FastAPI <code>/health</code> handler — but note the ECS service has no image yet until a deploy runs (Phase 7), so this may 5xx via the ALB until then</td></tr>
+    <tr><td>8</td><td>Service shows <code>runningCount == desiredCount</code> once an image has been deployed</td></tr>
+    <tr><td>9</td><td>Connection attempt times out (no route/SG rule), confirming RDS isn't publicly reachable</td></tr>
+    <tr><td>10</td><td>Snapshot created and waited-on; destroy proceeds only after; restore recreates RDS from that snapshot with the same master password</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>9. Known Issues and Limitations</h2>
+  <ul>
+    <li><strong>No AWS CLI or Terraform were present in this environment at session start.</strong> Terraform 1.9.8 was downloaded as a portable binary (no admin rights available; chocolatey install failed on a permissions error) solely to run <code>fmt</code>/<code>init</code>/<code>validate</code> locally — it was never pointed at a real AWS account and created nothing in the cloud.</li>
+    <li><strong><code>terraform validate</code> caught a real bug</strong>: the GitHub Actions OIDC <code>thumbprint_list</code> values were first written from memory and were malformed (39 hex characters instead of the required 40, on <em>two separate</em> attempts) — and were for the wrong certificate authority entirely (an old DigiCert-era value; GitHub's <code>token.actions.githubusercontent.com</code> now serves a Let's Encrypt certificate). Fixed by computing the real SHA1 fingerprints directly from a live TLS handshake with <code>openssl s_client</code>, not from a remembered/published value. The module's comment documents the exact command to re-derive this if it ever needs to change.</li>
+    <li><code>github_oidc_sub</code>, <code>allowed_origins</code>, and <code>ai_api_key</code> are required variables with no real values supplied — <code>terraform apply</code> will prompt for them (or fail non-interactively) until the user fills in <code>terraform.tfvars</code>.</li>
+    <li><strong>No <code>terraform plan</code>/<code>apply</code> has been run against real AWS.</strong> Everything here is unverified against actual cloud behavior: IAM policy sufficiency (e.g. whether the deploy role's permissions are enough for the Phase 7 pipeline once it's written), RDS engine version availability in the chosen region, and CloudFront's interaction with the API in practice.</li>
+    <li>CI/CD workflows (Phase 7 — <code>.github/workflows/deploy.yml</code> that would actually push images and update the ECS service) are not part of this session's scope and don't exist yet, so the ECS service will have no image to run immediately after a first apply.</li>
+    <li>Old manual RDS snapshots from <code>backup.sh</code> are never pruned automatically — documented in the README as an accepted MVP gap, per <code>backend-spec.md</code> §9.</li>
+    <li>The CLAUDE.md instruction to open this report "in your Superset browser" couldn't be followed — no such tool/capability is available in this session (confirmed via a tool search). The file is saved locally; open it directly in any browser.</li>
+    <li>The CLAUDE.md instruction to prefer "Archify" for diagrams also couldn't be followed — no such tool is available in this session. The architecture diagram above is hand-authored inline SVG instead.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>10. Verification Status</h2>
+  <div class="grid">
+    <div class="card"><strong>IMPLEMENTED</strong><p style="color:var(--text-muted); margin:6px 0 0;">All 7 Terraform modules, the root <code>environments/prod</code> config, 3 operational scripts, and the README runbook are written and present in <code>infra/</code>.</p></div>
+    <div class="card"><strong>TESTED</strong><p style="color:var(--text-muted); margin:6px 0 0;"><code>terraform fmt</code>, <code>terraform init</code>, and <code>terraform validate</code> all pass locally. A structural brace/paren/quote balance check also passed.</p></div>
+    <div class="card"><strong>MANUALLY VERIFIED</strong><p style="color:var(--text-muted); margin:6px 0 0;"><span class="badge fail">NOT DONE</span> — no <code>terraform plan</code>/<code>apply</code> was run against a real AWS account; nothing has been deployed or clicked through in a browser.</p></div>
+    <div class="card"><strong>UNVERIFIED</strong><p style="color:var(--text-muted); margin:6px 0 0;">Real-AWS behavior of every resource (RDS reachability, ALB health checks, CloudFront routing, IAM permission sufficiency, backup/restore round-trip) — see Section 7 for the steps to close this out.</p></div>
+  </div>
+</section>
+
+</main>
+</body>
+</html>

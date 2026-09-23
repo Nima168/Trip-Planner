@@ -3,9 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.errors import register_exception_handlers
-from app.routers import activities, conditions, days, public_share, share, trips
+from app.routers import activities, ai, auth, trips
 
-app = FastAPI(title="Trip Planner API")
+app = FastAPI(title="Musafir Travels API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,12 +17,11 @@ app.add_middleware(
 
 register_exception_handlers(app)
 
-app.include_router(trips.router)
-app.include_router(days.router)
-app.include_router(activities.router)
-app.include_router(conditions.router)
-app.include_router(share.router)
-app.include_router(public_share.router)
+api_v1 = "/api/v1"
+app.include_router(auth.router, prefix=api_v1)
+app.include_router(trips.router, prefix=api_v1)
+app.include_router(activities.router, prefix=api_v1)
+app.include_router(ai.router, prefix=api_v1)
 
 
 @app.get("/health")

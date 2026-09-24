@@ -51,8 +51,17 @@ jobs:
         run: |
           set -eu
           IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-          docker build -t "$IMAGE" backend
-          docker push "$IMAGE"
+          # ECR tags are immutable, so a re-run for the same commit (e.g. a
+          # workflow_dispatch redeploy after an infra change) reuses the image.
+          # (batch-get-image, not describe-images: the deploy role only has BatchGetImage.)
+          EXISTING=$(aws ecr batch-get-image --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageTag="$IMAGE_TAG" --query 'length(images)' --output text)
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "Image $IMAGE_TAG already in ECR; reusing it."
+          else
+            docker build -t "$IMAGE" backend
+            docker push "$IMAGE"
+          fi
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
   migrate:

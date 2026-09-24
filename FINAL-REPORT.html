@@ -71,7 +71,6 @@ svg .life{stroke:var(--line);stroke-width:1.5;stroke-dasharray:4 4}
   <span class="pill">Version <b>v2.0.0</b></span>
   <span class="pill">Live: <a href="https://musafir-trip-planner.vercel.app">musafir-trip-planner.vercel.app</a></span>
   <span class="pill">Code: <a href="https://github.com/Nima168/Trip-Planner/tree/v2.0.0">github.com/Nima168/Trip-Planner</a></span>
-  <span class="pill">Report date: 25 Sep 2026</span>
 </div>
 
 <section>
@@ -154,42 +153,35 @@ svg .life{stroke:var(--line);stroke-width:1.5;stroke-dasharray:4 4}
   <h2>2. Implementation Summary: the whole journey</h2>
   <p>Each step below is one stage of work, in order. Git commits are in <code>code</code>, so you can look up exactly what changed.</p>
   <div class="timeline">
-    <div class="step" data-n="1"><h3>v1 foundation</h3><div class="date">16–17 Sep</div>
-      <p>Created the repo with a FastAPI backend and a Vite + React frontend (<code>911687c</code>). Wrote specs for the frontend, backend and API contract. Built trip/day/activity create, read, update and delete, plus a weather/map widget that never crashes when the weather service fails, tests (including a "delete the rule, watch the test fail" check), a GitHub Actions CI workflow, and a Docker image. Deployed to <b>Render</b> (backend) and <b>Vercel</b> (frontend).</p></div>
-    <div class="step" data-n="2"><h3>v1 polish</h3><div class="date">18–22 Sep</div>
-      <p>Share links, a location per day, a UI redesign, a fix for Vercel 404s on page refresh (<code>5ec29ca</code>), and an Archify architecture diagram. Then created the <code>trip_planner.AI</code> branch for the new version.</p></div>
-    <div class="step" data-n="3"><h3>v2 specs and plan</h3><div class="date">23 Sep</div>
-      <p>New specs in <code>specs_new/</code>: goal, frontend, backend, API contract, and AI. Decisions: full replacement (v1 data discarded), AWS for hosting, and a 9-phase plan (0 to 8).</p></div>
-    <div class="step" data-n="4"><h3>Phases 1–5: backend, AI and frontend</h3><div class="date">23 Sep (<code>908cca7</code>)</div>
+    <div class="step" data-n="1"><h3>v1 foundation</h3>      <p>Created the repo with a FastAPI backend and a Vite + React frontend (<code>911687c</code>). Wrote specs for the frontend, backend and API contract. Built trip/day/activity create, read, update and delete, plus a weather/map widget that never crashes when the weather service fails, tests (including a "delete the rule, watch the test fail" check), a GitHub Actions CI workflow, and a Docker image. Deployed to <b>Render</b> (backend) and <b>Vercel</b> (frontend).</p></div>
+    <div class="step" data-n="2"><h3>v1 polish</h3>      <p>Share links, a location per day, a UI redesign, a fix for Vercel 404s on page refresh (<code>5ec29ca</code>), and an Archify architecture diagram. Then created the <code>trip_planner.AI</code> branch for the new version.</p></div>
+    <div class="step" data-n="3"><h3>v2 specs and plan</h3>      <p>New specs in <code>specs_new/</code>: goal, frontend, backend, API contract, and AI. Decisions: full replacement (v1 data discarded), AWS for hosting, and a 9-phase plan (0 to 8).</p></div>
+    <div class="step" data-n="4"><h3>Phases 1–5: backend, AI and frontend</h3><div class="date">Commit <code>908cca7</code></div>
       <p><b>Backend:</b> PostgreSQL models (User, Trip, Day, Activity), sign-up/log-in with JWT, and trip endpoints that create one Day per date automatically. Other users' data returns "404 not found" (never "403 forbidden"), so nobody can even tell it exists. Business rules return <code>400</code>; badly shaped requests return <code>422</code>.</p>
       <p><b>AI endpoint</b> <code>POST /api/v1/ai/trip-draft</code>: gets the chat, returns the draft. It never creates the trip itself; you confirm first.</p>
       <p><b>Frontend:</b> rewritten in TypeScript + Tailwind + TanStack Query. It has the chat and the review panel, drafts saved in the browser so a refresh doesn't lose them, and PDF export with jsPDF.</p></div>
-    <div class="step" data-n="5"><h3>Phase 6: AWS with Terraform</h3><div class="date">23–24 Sep</div>
-      <p>Terraform modules for the network (VPC, private subnets, NAT), ALB, ECS Fargate, RDS PostgreSQL (private), ECR, Secrets Manager, and a GitHub OIDC deploy role (no long-lived AWS keys in GitHub). <b>You verified it by hand:</b> 43 resources, RDS not reachable from outside, ECS healthy, <code>/health</code> OK. <b>CloudFront was blocked</b> by AWS account verification, so the API is served over HTTP by the ALB (<code>70a88ab</code>).</p></div>
-    <div class="step" data-n="6"><h3>Phase 7: CI/CD</h3><div class="date">24 Sep</div>
-      <p><code>deploy.yml</code>: test → build image → push to ECR → run the database migration as a one-off task → roll out → health check. Bugs found and fixed:</p>
+    <div class="step" data-n="5"><h3>Phase 6: AWS with Terraform</h3>      <p>Terraform modules for the network (VPC, private subnets, NAT), ALB, ECS Fargate, RDS PostgreSQL (private), ECR, Secrets Manager, and a GitHub OIDC deploy role (no long-lived AWS keys in GitHub). <b>You verified it by hand:</b> 43 resources, RDS not reachable from outside, ECS healthy, <code>/health</code> OK. <b>CloudFront was blocked</b> by AWS account verification, so the API is served over HTTP by the ALB (<code>70a88ab</code>).</p></div>
+    <div class="step" data-n="6"><h3>Phase 7: CI/CD</h3>      <p><code>deploy.yml</code>: test → build image → push to ECR → run the database migration as a one-off task → roll out → health check. Bugs found and fixed:</p>
       <ul>
         <li>ECS can't override a container's image, so the task definition is now registered first (<code>febfe8d</code>).</li>
         <li>The backend reads <code>CORS_ORIGINS</code>, not <code>ALLOWED_ORIGINS</code>.</li>
         <li>Migrations no longer run on every container start.</li>
       </ul>
       <p>The database tables were missing until the first real migration ran.</p></div>
-    <div class="step" data-n="7"><h3>Your manual testing found bugs, and they were fixed</h3><div class="date">24 Sep</div>
-      <ul>
+    <div class="step" data-n="7"><h3>Your manual testing found bugs, and they were fixed</h3>      <ul>
         <li><b>Refresh logged you out</b> (<code>5cdad64</code>). The login token reached the API client too late, so the first request after a refresh got a 401 and triggered logout. Fixed, with a test that fails on the old code.</li>
         <li><b>The PDF button was hidden</b>. It's now "Save as PDF" and always visible, along with Delete.</li>
         <li><b>RDS backups</b> were raised from 0 to 1 day, the free-plan maximum. The database restart this caused exposed dead connections, fixed with <code>pool_pre_ping</code> (<code>9fb4f62</code>).</li>
       </ul></div>
-    <div class="step" data-n="8"><h3>AI switched to Groq, and the flaky AI fixed</h3><div class="date">24–25 Sep (<code>c150495</code>)</div>
+    <div class="step" data-n="8"><h3>AI switched to Groq, and the flaky AI fixed</h3><div class="date">Commit <code>c150495</code></div>
       <p>Anthropic was removed completely; <code>AI_PROVIDER</code> only accepts <code>groq</code>. The first Groq version used "tool calls" and failed about 1 time in 4 (the "returned something unexpected" error you saw). The fix was Groq's <b>strict JSON-schema output</b>, which forces the model to answer in exactly the right shape. It's also about twice as fast (~1.7 s).</p></div>
-    <div class="step" data-n="9"><h3>Rate-limit countdown, new UI, and no past trips</h3><div class="date">25 Sep (<code>c150495</code>, <code>edf66d3</code>)</div>
+    <div class="step" data-n="9"><h3>Rate-limit countdown, new UI, and no past trips</h3><div class="date">Commit <code>c150495</code>, <code>edf66d3</code></div>
       <ul>
         <li><b>Rate limit:</b> Groq's "too many requests" now becomes a <b>429 with <code>Retry-After</code></b>, which the browser is allowed to read (CORS <code>expose_headers</code>). The chat shows "Our assistant needs a short breather", a countdown, and "Send again". Long (daily) limits offer manual entry.</li>
         <li><b>UI:</b> warm "golden hour" theme from your photos. The clouds photo is on login/sign-up; the Hampi road photo is on the Home and Trip banners. Trip cards, a day timeline, chat suggestions and a progress bar.</li>
         <li><b>Past dates:</b> blocked in three places: the UI shows an error, the AI asks for new dates, and the backend returns 400.</li>
       </ul></div>
-    <div class="step" data-n="10"><h3>Production rollout and go-live</h3><div class="date">25 Sep</div>
-      <ul>
+    <div class="step" data-n="10"><h3>Production rollout and go-live</h3>      <ul>
         <li>Terraform switched ECS to Groq, and you enabled AI with your key.</li>
         <li>A deploy-workflow bug (re-running the same commit failed) was fixed (<code>6722c9f</code>).</li>
         <li>Because CloudFront is blocked, <b>Vercel now forwards <code>/api</code> to AWS</b> (<code>0851c46</code>), and the app went live at <b>musafir-trip-planner.vercel.app</b>.</li>
@@ -327,7 +319,7 @@ terraform output api_base_url   # e.g. https://d1234abcd.cloudfront.net/api/v1</
     <tr><td>Live on a public HTTPS address</td><td><span class="b ok">Met</span> (through the Vercel proxy)</td></tr>
     <tr><td>End-to-end HTTPS to the API via CloudFront</td><td><span class="b warn">Blocked</span> (AWS account verification; see 2.4)</td></tr>
     <tr><td>Final version on <code>master</code>, tagged</td><td><span class="b ok">Met</span> (PR #1, <code>v2.0.0</code>)</td></tr>
-    <tr><td>v1 app retired</td><td><span class="b warn">Your action</span> (Appendix A)</td></tr>
+    <tr><td>v1 app retired</td><td><span class="b ok">Met</span> (old Vercel project deleted; Render backend suspended)</td></tr>
   </table></div>
 </section>
 
@@ -416,7 +408,7 @@ terraform output api_base_url   # e.g. https://d1234abcd.cloudfront.net/api/v1</
     <li><b>Emoji</b> for trip types depend on the device's emoji font.</li>
     <li><b>AI wording:</b> the assistant ends with "Please review these details" rather than the spec's exact "Shall I create this trip?" sentence. Confirmation still works.</li>
     <li><b>Lint:</b> 2 known warnings remain (<code>useDraftPersistence.ts</code>, <code>AuthContext.tsx</code> fast refresh).</li>
-    <li><b>v1 services still running</b> until you retire them (Appendix A). The old Vercel project now shows the v2 app because it builds from <code>master</code>.</li>
+    <li><b>Render v1 is suspended, not deleted.</b> Suspending is reversible. Delete it for good once you're sure nothing is needed (Appendix A, step 3).</li>
     <li><b>Security housekeeping:</b> rotate the old OpenWeather API key from v1 (it was once pasted in a chat).</li>
   </ul>
 </section>
@@ -425,23 +417,24 @@ terraform output api_base_url   # e.g. https://d1234abcd.cloudfront.net/api/v1</
   <h2>10. Verification Status</h2>
   <div class="wrap"><table>
     <tr><th>Area</th><th>Implemented</th><th>Tested</th><th>Manually verified</th></tr>
-    <tr><td>Accounts, trips, activities, PDF</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span></td><td><span class="b ok">MANUALLY VERIFIED</span> (you, 24 Sep, localhost against AWS)</td></tr>
-    <tr><td>AWS infrastructure (Phase 6)</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span></td><td><span class="b ok">MANUALLY VERIFIED</span> (you, 24 Sep)</td></tr>
-    <tr><td>CI/CD (Phase 7)</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span> (green runs)</td><td><span class="b ok">MANUALLY VERIFIED</span> (you, 24 Sep)</td></tr>
-    <tr><td>Groq AI (strict output)</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span> (unit + live)</td><td><span class="b ok">MANUALLY VERIFIED</span> (you, 25 Sep, locally)</td></tr>
-    <tr><td>Rate-limit countdown</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span> (unit + live burst)</td><td><span class="b ok">MANUALLY VERIFIED</span> (you, 25 Sep)</td></tr>
-    <tr><td>UI redesign</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span> (screenshots)</td><td><span class="b ok">MANUALLY VERIFIED</span> (you, 25 Sep)</td></tr>
-    <tr><td>No past dates</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span></td><td><span class="b ok">MANUALLY VERIFIED</span> (you, 25 Sep)</td></tr>
-    <tr><td>Live Vercel app (proxy)</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span> (Playwright on the live site)</td><td><span class="b ok">MANUALLY VERIFIED</span> ("happy with the live app", 25 Sep)</td></tr>
-    <tr><td>Cleanup, merge, tag</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span> (CORS, test user gone, PR checks)</td><td><span class="b warn">UNVERIFIED</span> (not yet reviewed by you)</td></tr>
+    <tr><td>Accounts, trips, activities, PDF</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span></td><td><span class="b ok">MANUALLY VERIFIED</span> (you, localhost against AWS)</td></tr>
+    <tr><td>AWS infrastructure (Phase 6)</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span></td><td><span class="b ok">MANUALLY VERIFIED</span> (you)</td></tr>
+    <tr><td>CI/CD (Phase 7)</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span> (green runs)</td><td><span class="b ok">MANUALLY VERIFIED</span> (you)</td></tr>
+    <tr><td>Groq AI (strict output)</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span> (unit + live)</td><td><span class="b ok">MANUALLY VERIFIED</span> (you, locally)</td></tr>
+    <tr><td>Rate-limit countdown</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span> (unit + live burst)</td><td><span class="b ok">MANUALLY VERIFIED</span> (you)</td></tr>
+    <tr><td>UI redesign</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span> (screenshots)</td><td><span class="b ok">MANUALLY VERIFIED</span> (you)</td></tr>
+    <tr><td>No past dates</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span></td><td><span class="b ok">MANUALLY VERIFIED</span> (you)</td></tr>
+    <tr><td>Live Vercel app (proxy)</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span> (Playwright on the live site)</td><td><span class="b ok">MANUALLY VERIFIED</span> ("happy with the live app")</td></tr>
+    <tr><td>Cleanup, merge, tag</td><td><span class="b ok">IMPLEMENTED</span></td><td><span class="b ok">TESTED</span> (CORS, test user gone, PR checks)</td><td><span class="b warn">UNVERIFIED</span> (not separately reviewed by you)</td></tr>
     <tr><td>CloudFront HTTPS</td><td><span class="b warn">PREPARED</span> (code ready)</td><td><span class="b bad">UNVERIFIED</span></td><td><span class="b bad">UNVERIFIED</span> (blocked by AWS)</td></tr>
-    <tr><td>v1 retirement</td><td><span class="b warn">YOUR ACTION</span></td><td><span class="b bad">UNVERIFIED</span></td><td><span class="b bad">UNVERIFIED</span></td></tr>
+    <tr><td>v1 retirement</td><td><span class="b ok">IMPLEMENTED</span> (by you)</td><td><span class="b ok">TESTED</span> (old Vercel URL: 404 <code>DEPLOYMENT_NOT_FOUND</code>; Render: "Service Suspended")</td><td><span class="b ok">MANUALLY VERIFIED</span> (you)</td></tr>
   </table></div>
 </section>
 
 <section id="retire">
   <h2>Appendix A. Retiring the v1 app</h2>
-  <p>Two old services still run. Nothing in v2 depends on them, and the v1 data was deliberately discarded.</p>
+  <div class="tip"><b>Done.</b> The old Vercel project is deleted (its address now returns <code>404 DEPLOYMENT_NOT_FOUND</code>), and the Render backend is suspended (its address shows "Service Suspended"). The live v2 app was checked afterwards and is unaffected. The steps are kept below for reference.</div>
+  <p>Nothing in v2 depends on these services, and the v1 data was deliberately discarded.</p>
   <h3>1. Render (old backend, <code>trip-planner-4tgv.onrender.com</code>)</h3>
   <ol>
     <li>Go to <b>dashboard.render.com</b> and open the web service behind <code>trip-planner-4tgv</code>.</li>
@@ -453,9 +446,8 @@ terraform output api_base_url   # e.g. https://d1234abcd.cloudfront.net/api/v1</
   <ol>
     <li>Go to <b>vercel.com</b> and open the project named <b>trip-planner</b>. <i>Not</i> <code>musafir-trip-planner</code>.</li>
     <li><b>Settings → General</b>, scroll to the bottom, then <b>Delete Project</b> and type the name to confirm.</li>
-    <li>It currently serves the v2 app (it builds from <code>master</code>), so nobody loses anything. Check that <b>musafir-trip-planner.vercel.app</b> still works afterwards.</li>
+    <li>By then it was serving the v2 app (it built from <code>master</code>), so deleting it lost nothing. Afterwards, check that <b>musafir-trip-planner.vercel.app</b> still works.</li>
   </ol>
-  <div class="note">Send me a message when both are done and I'll confirm they're gone and update this report.</div>
 </section>
 
 <section id="ops">

@@ -152,6 +152,11 @@ Last updated: 2026-09-24.
 - The production test user `phase7check_1790252346` was deleted with a one-off ECS task (`python -c`, ORM cascade to trips, days and activities). Its login now returns 401, and 1 real user remains.
 - Removed the stray `infra/environments/prod/plan.txt`.
 
+## v1 retired
+
+- The user deleted the old Vercel project `trip-planner` (`trip-planner-two-beta.vercel.app` now returns `404 DEPLOYMENT_NOT_FOUND`) and **suspended** the Render backend (`trip-planner-4tgv.onrender.com` shows "Service Suspended"). Suspending is reversible; delete the Render service for good once nothing is needed.
+- The live v2 app was checked afterwards: the site returns 200 and `/api` reaches the backend.
+
 ## What's left
 
 - **Blocked on AWS:**

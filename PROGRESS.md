@@ -136,6 +136,16 @@ Last updated: 2026-09-24.
   - Caveat: Vercel to ALB is plain HTTP.
 - **Found:** `musafir-travels.vercel.app`, the planned domain used in `allowed_origins`, belongs to an **unrelated** Next.js site ("MusafirTravellers – Spiritual Journey Tours"). The v2 frontend had never been deployed to Vercel. A new Vercel project is needed, and the foreign origin should be removed from `allowed_origins` (needs `TF_VAR_ai_api_key` for the apply).
 
+## Live on Vercel (2026-09-25)
+
+- New Vercel project **`musafir-trip-planner`** (https://musafir-trip-planner.vercel.app): root `frontend`, production branch `trip_planner.AI`. The branch setting now lives under Settings → Environments. The site needed a manual deployment of `trip_planner.AI` after the first import from `master`.
+- Verified live over HTTPS in Edge with Playwright:
+  - login, and still logged in after a reload;
+  - the AI assistant refuses past dates, then completes the draft ("4 of 4 ready");
+  - a past date in manual entry shows its error;
+  - the browser only contacts the Vercel domain, with no console errors.
+- Through the proxy: `/api` responses aren't cached (`X-Vercel-Cache: MISS`), and a burst of 8 AI requests gave 5 × 200 and 3 × 429 with `Retry-After` 7–10 s passed through, so the countdown works.
+
 ## What's left
 
 - **Blocked on AWS:**

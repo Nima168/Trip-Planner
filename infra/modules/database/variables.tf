@@ -44,7 +44,7 @@ variable "engine_version" {
 
 variable "backup_retention_days" {
   type    = number
-  default = 7
+  default = 0
 }
 
 variable "restore_from_snapshot" {

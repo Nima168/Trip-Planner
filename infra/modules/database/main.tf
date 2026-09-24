@@ -7,7 +7,7 @@ resource "aws_db_subnet_group" "this" {
 
 resource "aws_security_group" "rds" {
   name        = "${var.project}-rds-sg"
-  description = "Postgres — no inline ingress; the root module adds a rule allowing only the ECS tasks' security group, to avoid a module dependency cycle (RDS needs ECS's SG id, ECS needs RDS's secret)."
+  description = "Postgres - access only from ECS tasks"
   vpc_id      = var.vpc_id
 
   egress {

@@ -144,7 +144,7 @@ resource "aws_secretsmanager_secret" "ai_api_key" {
 
 resource "aws_secretsmanager_secret_version" "ai_api_key" {
   secret_id     = aws_secretsmanager_secret.ai_api_key.id
-  secret_string = var.ai_api_key
+  secret_string = var.ai_enabled ? var.ai_api_key : "AI_DISABLED"
 }
 
 # --- ECS (Fargate service running the backend) ---
@@ -169,12 +169,12 @@ module "ecs" {
 
 # --- CloudFront (HTTPS in front of the ALB) ---
 
-module "cdn" {
-  source       = "../../modules/cdn"
-  project      = var.project
-  alb_dns_name = module.alb.alb_dns_name
-  tags         = local.tags
-}
+# module "cdn" {
+#  source       = "../../modules/cdn"
+#  project      = var.project
+#  alb_dns_name = module.alb.alb_dns_name
+#  tags         = local.tags
+#}
 
 # --- GitHub Actions OIDC deploy role ---
 

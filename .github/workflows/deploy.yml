@@ -33,11 +33,6 @@ jobs:
       image: ${{ steps.image.outputs.image }}
     steps:
       - uses: actions/checkout@v4
-      - name: Debug OIDC token
-        run: |
-          curl -sH "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | \
-            cut -d. -f2 | base64 -d | python3 -m json.tool
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:

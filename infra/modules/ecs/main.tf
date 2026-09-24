@@ -6,7 +6,7 @@ resource "aws_ecs_cluster" "this" {
 
 resource "aws_security_group" "ecs" {
   name        = "${var.project}-ecs-sg"
-  description = "Backend ECS tasks — inbound only from the ALB, outbound to RDS/internet via NAT."
+  description = "Backend ECS tasks - inbound only from the ALB, outbound to RDS/internet via NAT."
   vpc_id      = var.vpc_id
 
   ingress {

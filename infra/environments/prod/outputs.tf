@@ -1,11 +1,13 @@
 output "api_base_url" {
-  description = "Value for the frontend's VITE_API_BASE_URL (frontend-spec.md §10)."
-  value       = "https://${module.cdn.cloudfront_domain_name}/api/v1"
+  description = "API URL through the ALB while CloudFront is unavailable."
+  value       = "http://${module.alb.alb_dns_name}/api/v1"
 }
 
-output "cloudfront_domain_name" {
-  value = module.cdn.cloudfront_domain_name
-}
+# CloudFront is temporarily disabled because AWS account verification
+# is required before creating CloudFront resources.
+# output "cloudfront_domain_name" {
+#   value = module.cdn.cloudfront_domain_name
+# }
 
 output "alb_dns_name" {
   value = module.alb.alb_dns_name

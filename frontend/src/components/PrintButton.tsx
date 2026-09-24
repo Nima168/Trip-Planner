@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 
 import type { Trip } from "../types";
 import { formatDateRange } from "../utils/date";
+import { Icon } from "./Icon";
 
 function buildItineraryPdf(trip: Trip): jsPDF {
   const doc = new jsPDF();
@@ -53,8 +54,9 @@ export function PrintButton({ trip }: { trip: Trip }) {
     <button
       type="button"
       onClick={handlePrint}
-      className="rounded border border-border px-3 py-1 text-sm text-text hover:border-primary hover:text-primary"
+      className="btn-primary"
     >
+      <Icon name="download" />
       Save as PDF
     </button>
   );

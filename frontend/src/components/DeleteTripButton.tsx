@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useDeleteTrip } from "../api/queries";
+import { Icon } from "./Icon";
 
 export function DeleteTripButton({ tripId }: { tripId: string }) {
   const [confirming, setConfirming] = useState(false);
@@ -15,21 +16,17 @@ export function DeleteTripButton({ tripId }: { tripId: string }) {
 
   if (confirming) {
     return (
-      <div className="flex items-center gap-2 text-sm">
-        <span className="text-text-muted">Delete this trip?</span>
+      <div role="alertdialog" aria-label="Confirm delete" className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="px-1 font-medium text-ink">Delete this trip?</span>
         <button
           type="button"
           onClick={handleConfirm}
           disabled={deleteTrip.isPending}
-          className="rounded bg-error px-3 py-1 text-white hover:opacity-90 disabled:opacity-60"
+          className="btn bg-error text-white hover:opacity-90"
         >
           {deleteTrip.isPending ? "Deleting…" : "Yes, delete"}
         </button>
-        <button
-          type="button"
-          onClick={() => setConfirming(false)}
-          className="rounded border border-border px-3 py-1 text-text hover:border-primary"
-        >
+        <button type="button" onClick={() => setConfirming(false)} className="btn-secondary">
           Cancel
         </button>
       </div>
@@ -37,11 +34,8 @@ export function DeleteTripButton({ tripId }: { tripId: string }) {
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => setConfirming(true)}
-      className="rounded border border-error px-3 py-1 text-sm text-error hover:bg-error hover:text-white"
-    >
+    <button type="button" onClick={() => setConfirming(true)} className="btn-danger">
+      <Icon name="trash" />
       Delete
     </button>
   );

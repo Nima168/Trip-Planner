@@ -15,3 +15,15 @@ export function formatDateRange(startIso: string, endIso: string): string {
   }
   return `${formatDateLong(startIso)} – ${formatDateLong(endIso)}`;
 }
+
+/** Today's date in the user's local timezone, as "YYYY-MM-DD". */
+export function localTodayIso(now: Date = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+/** True if an ISO date is before today (ISO dates compare correctly as strings). */
+export function isPastDate(iso: string | null, todayIso: string): boolean {
+  return iso !== null && iso !== "" && iso < todayIso;
+}

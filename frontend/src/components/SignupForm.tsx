@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useSignup } from "../api/queries";
 import { useAuth } from "../auth/AuthContext";
+import { FormError, PasswordInput } from "./AuthLayout";
 
 export function SignupForm() {
   const [username, setUsername] = useState("");
@@ -22,49 +23,44 @@ export function SignupForm() {
       auth.login(result.access_token, result.username);
       navigate("/trips", { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? String(err.detail ?? err.message) : "Signup failed");
+      setError(err instanceof ApiError ? String(err.detail ?? err.message) : "Couldn't reach the server. Please try again.");
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto mt-16 max-w-sm rounded-lg border border-border bg-surface p-6">
-      <h1 className="mb-4 text-xl font-semibold">Sign up</h1>
-      <div className="mb-3">
-        <label htmlFor="signup-username" className="mb-1 block text-sm text-text-muted">
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div>
+        <label htmlFor="signup-username" className="field-label">
           Username
         </label>
         <input
           id="signup-username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
+          autoComplete="username"
+          autoFocus
           required
-          className="w-full rounded border border-border bg-surface px-3 py-2 text-text focus:border-primary focus:outline-none"
+          className="field-input"
         />
       </div>
-      <div className="mb-4">
-        <label htmlFor="signup-password" className="mb-1 block text-sm text-text-muted">
+      <div>
+        <label htmlFor="signup-password" className="field-label">
           Password
         </label>
-        <input
+        <PasswordInput
           id="signup-password"
-          type="password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          className="w-full rounded border border-border bg-surface px-3 py-2 text-text focus:border-primary focus:outline-none"
+          onChange={setPassword}
+          autoComplete="new-password"
         />
       </div>
-      {error && <p className="mb-3 text-sm text-error">{error}</p>}
-      <button
-        type="submit"
-        disabled={signup.isPending}
-        className="w-full rounded bg-primary px-4 py-2 text-white hover:bg-primary-hover disabled:opacity-60"
-      >
-        {signup.isPending ? "Signing up…" : "Sign up"}
+      <FormError message={error} />
+      <button type="submit" disabled={signup.isPending} className="btn-primary w-full py-3 text-base">
+        {signup.isPending ? "Creating your account…" : "Create account"}
       </button>
-      <p className="mt-4 text-center text-sm text-text-muted">
+      <p className="text-center text-sm text-text-muted">
         Already have an account?{" "}
-        <Link to="/login" className="text-primary hover:underline">
+        <Link to="/login" className="font-medium text-primary hover:underline">
           Log in
         </Link>
       </p>

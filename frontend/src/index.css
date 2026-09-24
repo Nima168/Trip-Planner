@@ -2,6 +2,56 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-background text-text font-sans;
+@layer base {
+  body {
+    @apply bg-background font-sans text-text antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply text-ink;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary/60 ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary text-white shadow-sm hover:bg-primary-hover;
+  }
+
+  .btn-secondary {
+    @apply btn border border-border bg-surface text-ink hover:border-primary hover:text-primary;
+  }
+
+  .btn-ghost {
+    @apply btn text-text-muted hover:bg-sand hover:text-ink;
+  }
+
+  .btn-danger {
+    @apply btn border border-error/40 bg-surface text-error hover:bg-error hover:text-white;
+  }
+
+  .card {
+    @apply rounded-2xl border border-border bg-surface shadow-card;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-sm font-medium text-ink;
+  }
+
+  .field-input {
+    @apply w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-text placeholder:text-text-muted/70 transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium;
+  }
 }

@@ -3,12 +3,21 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 export class ApiError extends Error {
   status: number;
   detail: unknown;
+  /** Seconds from a `Retry-After` header (sent with 429), if present and numeric. */
+  retryAfterSeconds: number | null;
 
-  constructor(status: number, detail: unknown) {
+  constructor(status: number, detail: unknown, retryAfterSeconds: number | null = null) {
     super(typeof detail === "string" ? detail : `Request failed with status ${status}`);
     this.status = status;
     this.detail = detail;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+function parseRetryAfter(value: string | null): number | null {
+  if (!value) return null;
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.ceil(seconds) : null;
 }
 
 // Set by AuthContext on mount so the client can attach the current token and react
@@ -56,7 +65,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   if (!response.ok) {
     const detail = data && typeof data === "object" && "detail" in data ? data.detail : data;
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, detail, parseRetryAfter(response.headers.get("Retry-After")));
   }
 
   return data as T;

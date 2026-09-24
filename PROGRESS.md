@@ -131,7 +131,10 @@ Last updated: 2026-09-24.
   - Past dates are left empty, and the reply asks for dates from today.
   - A burst of 8 requests gave 6 × 200 and 2 × 429 (`Retry-After: 9`), with `Retry-After` exposed via CORS.
   - `POST /trips` with a past start date returns 400.
-- **Still true:** the Vercel frontend can't call the HTTP-only ALB until CloudFront is unblocked, so the new UI is used through the local frontend pointed at AWS.
+- **HTTPS workaround (option 2, 2026-09-25):** `vercel.json` proxies `/api/*` to the ALB, with CDN caching turned off because responses are per-user. `.env.production` sets `VITE_API_BASE_URL=/api/v1`, so the browser only makes same-origin HTTPS calls.
+  - Simulated locally (the production build served with an `/api` proxy to the real ALB): login, staying logged in after reload, and a live AI chat all worked, and the browser only contacted its own origin.
+  - Caveat: Vercel to ALB is plain HTTP.
+- **Found:** `musafir-travels.vercel.app`, the planned domain used in `allowed_origins`, belongs to an **unrelated** Next.js site ("MusafirTravellers – Spiritual Journey Tours"). The v2 frontend had never been deployed to Vercel. A new Vercel project is needed, and the foreign origin should be removed from `allowed_origins` (needs `TF_VAR_ai_api_key` for the apply).
 
 ## What's left
 

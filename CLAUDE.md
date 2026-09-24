@@ -113,7 +113,10 @@ Serves http://localhost:5173. `VITE_API_BASE_URL` (in `frontend/.env`) selects t
 
 ## Known constraints
 
-- **CloudFront disabled:** AWS blocks new CloudFront resources until the account is verified. Until then the API is HTTP-only through the ALB, so an HTTPS frontend (Vercel) can't call it because of mixed content. To re-enable, uncomment `module "cdn"` and its output in `infra/environments/prod`.
+- **CloudFront disabled:** AWS blocks new CloudFront resources until the account is verified, so the API is HTTP-only through the ALB.
+  - **Temporary workaround:** `frontend/vercel.json` proxies `/api/*` to the ALB (with rewrite caching turned off), and `frontend/.env.production` sets `VITE_API_BASE_URL=/api/v1`. The browser only talks HTTPS to Vercel.
+  - **Security caveat:** the hop from Vercel to the ALB is plain HTTP, so it's fine for a demo but not for real users.
+  - **Once CloudFront is allowed:** uncomment `module "cdn"` and its output, point `VITE_API_BASE_URL` at the CloudFront URL, and remove the `/api` rewrite.
 - **AWS free plan:** RDS backup retention is capped at 1 day.
 - **AI disabled in production:** `terraform.tfvars` has `ai_enabled = false` with `ai_provider = "groq"` and `ai_model = "openai/gpt-oss-120b"`. To enable it:
   1. Set the Groq key as `TF_VAR_ai_api_key` in the terminal (never commit it).

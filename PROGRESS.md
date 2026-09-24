@@ -27,10 +27,12 @@ Last updated: 2026-09-24.
 ## Decisions (confirmed with user)
 
 - **Full replacement, not additive:** v1 code deleted outright and v1 data discarded (no migration).
-- **Cloud and model:** stay on AWS and Anthropic (Render and Grok were considered and rejected).
+- **Cloud:** stay on AWS (Render was considered and rejected).
+- **AI provider (2026-09-24):** Groq only, with `openai/gpt-oss-120b`. Specs updated (`AI-spec.md`, `backend-spec.md`, `api-contract-spec.md`).
 - **AWS now:** AWS migration done in this build, not deferred.
 - **Deploy branch:** `trip_planner.AI`, with a fresh Vercel project until cutover.
 - **Trip details form:** required fields are marked `*` (replacing the earlier "Still needed" note).
+- **No past trips (2026-09-25):** trips must start today or later. The trip details panel, the AI assistant and the backend all enforce this.
 - **PDF button:** renamed from "Print" to **"Save as PDF"**. It and **Delete** now show on every trip, including trips with no activities (previously hidden until the first activity existed). `frontend-spec.md` updated to match.
 
 ## Backend (`backend/`)
@@ -42,10 +44,23 @@ Last updated: 2026-09-24.
   - **Business rules return 400** and are enforced in routers: `end_date` before `start_date`, empty activity text.
   - **Request-shape errors return 422** from pydantic.
 - **AI trip draft** (`routers/ai.py`, `services/ai_service.py`, `services/ai_prompts.py`): `POST /api/v1/ai/trip-draft` takes the chat history, the current draft, a reference date and a timezone, and returns an updated draft.
-  - Claude Haiku is called through a `ProviderAdapter` protocol using a tool-use structured result, so tests can swap in a fake provider.
+  - The model is called through a `ProviderAdapter` protocol, so tests can swap in a fake provider. The structured result is requested with Groq's **strict JSON-schema structured output** (constrained decoding).
+  - `GroqAdapter` calls Groq's OpenAI-compatible chat API with `openai/gpt-oss-120b`. It uses 4,096 max completion tokens and reasoning effort `low`, because reasoning tokens count toward the limit.
+  - **Bug found in local testing:** the first version used a forced tool call. On a follow-up turn ("yes its on october 3rd") it intermittently failed with Groq's `400 tool_use_failed` (about 1 in 4 replays), which the UI showed as "The assistant returned something unexpected".
+    - Fixed by switching to strict structured output. 6 of 6 live replays of that conversation succeeded, at about 1.7 s per turn instead of about 3.5 s.
+    - `RESULT_SCHEMA` now closes every object (`additionalProperties: false`), as strict mode requires. A test enforces this.
+  - Error mapping: invalid, empty or truncated output and Groq's `400 json_validate_failed` return 502. Timeouts return 504. Connection errors, rate limits and other status errors return 503.
+  - Every AI failure is logged with its type and a sanitized reason: validation errors list field paths and error types only, never the user's text.
+  - **Groq free tier:** 8,000 tokens per minute, about 1,400 tokens per turn, so roughly 5 AI turns per minute across all users.
+  - **Rate limits (2026-09-25):** Groq's `429` now becomes `AIProviderRateLimited` and the API returns **429 with `Retry-After`**, the same shape as the per-user limit. It used to return a vague 503.
+    - The wait comes from Groq's `retry-after` header, or else its "try again in 1m30.5s" message, or else 30 seconds.
+    - CORS now sets `expose_headers=["Retry-After"]`. Before this, the browser hid the header from the frontend, including on the per-user 429.
+    - Verified live: a burst of 8 real requests gave 6 × 200 and 2 × 429 (`Retry-After: 10` and `9`).
+  - `AI_PROVIDER` only accepts `groq`, so any other value stops the app at startup instead of failing every AI request.
   - An in-memory per-process rate limit applies.
   - Returns 503 "AI is currently unavailable" when `AI_ENABLED=false` or on provider errors.
-- **Tests:** 44 pytest tests (auth 7, trips 11, activities 10, AI 16) against Postgres. Green locally and in CI.
+- **Past start dates:** `POST /trips` returns 400 `start_date cannot be in the past`, with one day of slack for timezones (UTC today minus 1).
+- **Tests:** 69 pytest tests against Postgres (4 new for past dates, using dates relative to today), covering auth, trips, activities, the AI endpoint (including a provider 429 with `Retry-After`) and the Groq adapter (including 5 retry-time parsing cases). The Groq adapter tests mock the SDK client, so no network calls are made.
 
 ## Frontend (`frontend/`)
 
@@ -58,7 +73,18 @@ Last updated: 2026-09-24.
 - **AI chat flow** (`TripChat`, `TripDraftReview`, `hooks/useDraftPersistence.ts`): a chat-first new-trip flow with a review step.
   - Drafts persist in `localStorage`, namespaced per API URL and username and validated on restore.
   - Stale responses are dropped via a request-version counter plus an AbortController.
-- **Checks:** 3 Vitest tests. `oxlint` has 0 errors and 2 known warnings. `npm run build` is clean.
+- **Rate-limit experience:** on a 429 the chat shows "Our assistant needs a short breather" with a live countdown and progress bar, keeps the chat and draft, disables Send, then offers "Send again".
+  - Waits over 2 minutes (a daily quota) show a different message with an "Enter details manually" button.
+  - Other AI errors also get a "Retry" button that resends the last message instead of asking the user to retype it.
+- **UI/UX redesign (2026-09-25):** warm "golden hour" look built from the user's two photos (`public/images/hero-clouds.jpg`, `hero-road.jpg`). Terracotta primary colour (WCAG AA), Fraunces headings with Fira Sans body, shared component classes in `index.css`, and inline SVG icons.
+  - **Login and sign-up:** split layout with the clouds photo and feature highlights; show/hide password toggle; clearer error messages.
+  - **Header:** sticky, with a logo, "My trips", a "Plan a trip" button, an avatar and log out.
+  - **Home:** road-photo banner ("Hi {name}, where to next?", with upcoming and total counts). Trip cards in a grid, upcoming trips first, each with a "Starts in N days / Happening now / Completed" badge, trip length and type. Loading skeletons, and a friendlier empty state.
+  - **New trip:** a segmented "Describe your trip / Enter details manually" switch. The chat has an assistant avatar, suggestion chips, a typing indicator and auto-scroll. The details panel has an "N of 4 ready" progress bar and a tick on each completed field.
+  - **Trip itinerary:** photo banner with the trip facts, prominent "Save as PDF" and "Delete", and days shown as a numbered timeline (first day open, "Expand all"). Each closed day previews its activities. Edit and delete use icons, and Escape cancels an edit.
+  - Checked with Playwright screenshots in Edge at 1366 px and 390 px (phone) widths, plus a live Groq conversation and a simulated 429.
+- **Past-date rule:** `TripDraftReview` shows "Start/End date can't be in the past — choose today or a later date." Past dates don't count toward "N of 4 ready", and the pickers use `min=today`. `NewTripPage` blocks Create trip and a chat "yes" confirmation while any date is in the past, and translates the backend's 400 into the same friendly message. The AI prompt (v3) asks for a new date instead of filling in a past one; verified live.
+- **Checks:** 8 Vitest tests, including 3 for past dates and 2 for the rate-limit notice (short wait, and long wait with the manual-entry option). `oxlint` has 0 errors and 2 known warnings. `npm run build` is clean.
 
 ## Infrastructure (`infra/`, Terraform)
 
@@ -101,7 +127,7 @@ Last updated: 2026-09-24.
   - Account verification for CloudFront/HTTPS.
   - Account plan upgrade for more than 1 day of RDS backups.
 - **Phase 8:**
-  - Set the Anthropic budget cap and data-retention policy, then enable AI (`ai_enabled=true` + key).
+  - Enable AI on Groq: provide a Groq API key via `TF_VAR_ai_api_key`, set `ai_enabled=true`, apply and deploy. Provider and model are already set in `terraform.tfvars`. Check Groq's free-tier or spend limits against the US$5/month budget.
   - Full live test: AI chat scenarios, draft restore after refresh, account isolation.
   - Point Vercel's `VITE_API_BASE_URL` at CloudFront, swap the production domain, then shut down Render after a quiet period.
   - Confirm the v1 SQLite data was discarded.

@@ -13,6 +13,8 @@ github_oidc_sub = "repo:OWNER@12345/REPO@67890:ref:refs/heads/trip_planner.AI"
 # handling is application-side, not a literal wildcard here.
 allowed_origins = "https://musafir-travels.vercel.app"
 
-ai_enabled = false
+ai_enabled  = false
+ai_provider = "groq"
+ai_model    = "openai/gpt-oss-120b"
 # ai_api_key is intentionally left out — pass via TF_VAR_ai_api_key or
 # -var so it never lands in a committed file, even a gitignored one.

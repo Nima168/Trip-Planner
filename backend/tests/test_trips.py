@@ -1,3 +1,7 @@
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
 from tests.conftest import auth_headers
 
 TRIP_PAYLOAD = {
@@ -33,6 +37,34 @@ def test_create_trip_end_before_start_400(client):
     payload = {**TRIP_PAYLOAD, "start_date": "2027-10-03", "end_date": "2027-10-01"}
     resp = client.post("/api/v1/trips", json=payload, headers=headers)
     assert resp.status_code == 400
+
+
+def _utc_today_plus(days):
+    return (datetime.now(UTC).date() + timedelta(days=days)).isoformat()
+
+
+def test_create_trip_past_start_400(client):
+    headers = auth_headers(client)
+    payload = {**TRIP_PAYLOAD, "start_date": _utc_today_plus(-5), "end_date": _utc_today_plus(2)}
+    resp = client.post("/api/v1/trips", json=payload, headers=headers)
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "start_date cannot be in the past"
+
+
+def test_create_trip_fully_past_400(client):
+    headers = auth_headers(client)
+    payload = {**TRIP_PAYLOAD, "start_date": _utc_today_plus(-10), "end_date": _utc_today_plus(-8)}
+    resp = client.post("/api/v1/trips", json=payload, headers=headers)
+    assert resp.status_code == 400
+
+
+@pytest.mark.parametrize("offset", [-1, 0])
+def test_create_trip_today_or_yesterday_utc_allowed(client, offset):
+    # One day of slack covers users whose local date is behind UTC.
+    headers = auth_headers(client)
+    payload = {**TRIP_PAYLOAD, "start_date": _utc_today_plus(offset), "end_date": _utc_today_plus(offset + 1)}
+    resp = client.post("/api/v1/trips", json=payload, headers=headers)
+    assert resp.status_code == 201
 
 
 def test_create_trip_requires_auth(client):

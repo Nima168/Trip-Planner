@@ -164,6 +164,8 @@ module "ecs" {
   ai_api_key_secret_arn   = aws_secretsmanager_secret.ai_api_key.arn
   allowed_origins         = var.allowed_origins
   ai_enabled              = var.ai_enabled
+  ai_provider             = var.ai_provider
+  ai_model                = var.ai_model
   tags                    = local.tags
 }
 

@@ -1,3 +1,4 @@
+import logging
 import time
 from collections import defaultdict, deque
 
@@ -8,6 +9,7 @@ from app.models import User
 from app.schemas.ai import TripDraftRequest, TripDraftResponse
 from app.services.ai_service import (
     AIProviderInvalidOutput,
+    AIProviderRateLimited,
     AIProviderTimeout,
     AIProviderUnavailable,
     ProviderAdapter,
@@ -17,6 +19,7 @@ from app.services.ai_service import (
 from app.services.auth_service import get_current_user
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+logger = logging.getLogger(__name__)
 
 # In-memory, per-process rate limiter (MVP limitation, documented in backend-spec.md
 # §11 — not a shared/global limit across replicas, and resets on restart).
@@ -55,15 +58,33 @@ async def trip_draft(
 
     try:
         return await get_trip_draft(payload, adapter)
-    except AIProviderTimeout as exc:
-        raise HTTPException(
+    except (
+        AIProviderTimeout,
+        AIProviderUnavailable,
+        AIProviderInvalidOutput,
+        AIProviderRateLimited,
+    ) as exc:
+        # Adapter messages never include conversation text, so they're safe to log.
+        logger.warning("AI trip-draft failed: %s: %s", type(exc).__name__, exc)
+        raise _to_http_error(exc) from exc
+
+
+def _to_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, AIProviderRateLimited):
+        # Same shape as the per-user limit above: the client waits Retry-After seconds.
+        return HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="AI provider is busy",
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        )
+    if isinstance(exc, AIProviderTimeout):
+        return HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="AI provider timed out"
-        ) from exc
-    except AIProviderUnavailable as exc:
-        raise HTTPException(
+        )
+    if isinstance(exc, AIProviderUnavailable):
+        return HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="AI provider unavailable"
-        ) from exc
-    except AIProviderInvalidOutput as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail="AI provider returned invalid output"
-        ) from exc
+        )
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY, detail="AI provider returned invalid output"
+    )

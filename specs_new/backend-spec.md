@@ -89,7 +89,7 @@ Entities mirror the glossary in `goal-spec.md`: User, Trip, Day, Activity. (`Des
 - An expired/invalid/missing token returns `401`.
 ## 6. Third-Party Integrations
 <!-- Maps, geocoding, weather, flight/hotel data, email, etc. Include what each is used for. -->
-- Approved AI enhancement: a hosted model API for conversational trip-field extraction, called only from the backend (`AI-spec.md`). Use Anthropic Claude Haiku (`claude-haiku-4-5-20251001`); use the official Anthropic Python SDK and use pinned version `1.6.0`. No maps/geocoding/weather/email or auto-generated itinerary content. PDF export remains client-side.
+- Approved AI enhancement: a hosted model API for conversational trip-field extraction, called only from the backend (`AI-spec.md`). Use Groq `openai/gpt-oss-120b`; use the official `groq` Python SDK, pinned version `1.7.0`. No maps/geocoding/weather/email or auto-generated itinerary content. PDF export remains client-side.
 
 ## 7. Non-Functional Requirements
 <!-- Performance/scalability targets, rate limiting, caching strategy, logging/monitoring, expected load. -->
@@ -101,7 +101,7 @@ Entities mirror the glossary in `goal-spec.md`: User, Trip, Day, Activity. (`Des
 ## 8. Error Handling
 <!-- Standard error response shape, how validation errors vs. server errors vs. auth errors are surfaced. (Should match api-contract-spec.md) -->
 - Uses FastAPI's default conventions: `HTTPException` → `{"detail": "<message>"}`; Pydantic validation failures → `422` with FastAPI's standard `detail` array of field errors.
-- Status codes: `400` business-rule validation (e.g. `end_date` before `start_date`, empty activity text), `401` missing/invalid/expired JWT, `404` resource not found or not owned by the caller, `422` request-shape validation, `500` unhandled error.
+- Status codes: `400` business-rule validation (e.g. `end_date` before `start_date`, `start_date` before today in UTC minus one day, empty activity text), `401` missing/invalid/expired JWT, `404` resource not found or not owned by the caller, `422` request-shape validation, `500` unhandled error.
 - This is the MVP default — **must be finalized to match `api-contract-spec.md`** once that spec is filled in, since the exact response envelope is the frontend/backend contract.
 ## 9. Environment & Deployment
 <!-- Env vars, config management, deployment target, migrations strategy. -->
@@ -143,7 +143,7 @@ On push to `main`:
 - **CORS:** `CORSMiddleware` configured from `ALLOWED_ORIGINS`, including both the Vercel production domain and its `*.vercel.app` preview domains — Preview deployments hit this same production API (`frontend-spec.md` §10).
 
 ## 10. Open Questions
-Anthropic and `claude-haiku-4-5-20251001` are selected; specified operational defaults are approved in `AI-spec.md` and §11. Unspecified implementation/release details are tracked in `AI-spec.md` §9. Previously resolved infrastructure decisions:
+Groq and `openai/gpt-oss-120b` are selected; specified operational defaults are approved in `AI-spec.md` and §11. Unspecified implementation/release details are tracked in `AI-spec.md` §9. Previously resolved infrastructure decisions:
 - First user account: created via `POST /auth/signup` (§5), no seed script needed.
 - `Activity.sort_order`: insertion order only, no reorder endpoint/UI.
 - JWT expiry: 30 days, no refresh-token flow.
@@ -166,13 +166,13 @@ Architecture approved: extend the existing FastAPI deployment with `POST /api/v1
 
 ### Configuration & Operational Defaults
 
-Approved application settings: `AI_ENABLED` (default false), `AI_PROVIDER` (`anthropic`), `AI_MODEL` (`claude-haiku-4-5-20251001`), `AI_API_KEY`, and `AI_TIMEOUT_SECONDS` (default 20). The selected provider's adapter maps these settings to its API. AI-disabled/unconfigured requests return `503`; existing manual trip creation remains usable and application startup/health checks remain independent of provider availability.
+Approved application settings: `AI_ENABLED` (default false), `AI_PROVIDER` (`groq`, the only accepted value; anything else fails at startup), `AI_MODEL` (`openai/gpt-oss-120b`), `AI_API_KEY`, and `AI_TIMEOUT_SECONDS` (default 20). The selected provider's adapter maps these settings to its API. AI-disabled/unconfigured requests return `503`; existing manual trip creation remains usable and application startup/health checks remain independent of provider availability.
 
 Store the API key in Secrets Manager and inject it into the ECS task using the existing secret pattern. Reference a persistent externally managed provider secret so destroy/restore cycles do not erase it; provision it before enabling AI. Add scoped secret-read permission and task configuration through Terraform. Local development uses ignored `backend/.env`; committed examples contain placeholders only. No key belongs in frontend configuration.
 
-Enforce the request bounds in the API contract. Approved initial rate limit: 10 AI requests per authenticated user per 60 seconds, returning `429` with `Retry-After`. An in-memory limiter is per process and resets on restart; it is only an MVP throttle, not a global spending cap. Review shared enforcement before scaling replicas/workers. The approved Anthropic usage budget is US$5 per month for Musafir, across users and backend instances. Configure and verify spending enforcement before enabling production AI; do not claim the request throttle enforces this budget. If provider controls cannot enforce this amount and scope, document an alternative before release. When the budget blocks AI calls, return `503` using the existing unavailable/quota behavior and preserve manual trip creation.
+Enforce the request bounds in the API contract. Approved initial rate limit: 10 AI requests per authenticated user per 60 seconds, returning `429` with `Retry-After`. An in-memory limiter is per process and resets on restart; it is only an MVP throttle, not a global spending cap. Review shared enforcement before scaling replicas/workers. The approved Groq usage budget is US$5 per month for Musafir, across users and backend instances. Configure and verify spending enforcement before enabling production AI; do not claim the request throttle enforces this budget. If provider controls cannot enforce this amount and scope, document an alternative before release. When the budget blocks AI calls, return `503` using the existing unavailable/quota behavior and preserve manual trip creation.
 
-Allow one provider attempt per request, with a 20-second deadline and SDK automatic retries disabled. Limit each provider response to 1,024 output tokens for the entire structured result, including the conversational reply. Treat a response truncated by the output limit as invalid provider output (`502`); preserve the frontend draft and do not automatically retry. Map failures to `502`/`503`/`504` per the contract; do not expose provider error bodies. Record latency, outcome, and usage counts when available, but do not log raw conversations, prompts, credentials, or auth headers. Raw provider response logging is disabled. Anthropic’s standard API data-handling and retention policy is approved; zero data retention is not required. Verify the applicable policy and account settings before production use; this does not relax the application’s logging and credential-handling restrictions.
+Allow one provider attempt per request, with a 20-second deadline and SDK automatic retries disabled. Limit each provider response to 1,024 output tokens for the entire structured result, including the conversational reply. Treat a response truncated by the output limit as invalid provider output (`502`); preserve the frontend draft and do not automatically retry. Map failures to `502`/`503`/`504` per the contract; do not expose provider error bodies. Record latency, outcome, and usage counts when available, but do not log raw conversations, prompts, credentials, or auth headers. Raw provider response logging is disabled. Groq’s standard API data-handling and retention policy is approved; zero data retention is not required. Verify the applicable policy and account settings before production use; this does not relax the application’s logging and credential-handling restrictions.
 
 ### Verification
 

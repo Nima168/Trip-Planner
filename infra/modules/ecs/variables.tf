@@ -79,12 +79,12 @@ variable "ai_enabled" {
 
 variable "ai_provider" {
   type    = string
-  default = "anthropic"
+  default = "groq"
 }
 
 variable "ai_model" {
   type    = string
-  default = "claude-haiku-4-5-20251001"
+  default = "openai/gpt-oss-120b"
 }
 
 variable "ai_timeout_seconds" {

@@ -24,7 +24,7 @@ variable "allowed_origins" {
 }
 
 variable "ai_api_key" {
-  description = "Anthropic API key, stored into Secrets Manager for the ECS task. Sensitive."
+  description = "Groq API key, stored into Secrets Manager for the ECS task. Pass via TF_VAR_ai_api_key on every apply. Sensitive."
   type        = string
   sensitive   = true
   default     = ""
@@ -33,6 +33,23 @@ variable "ai_api_key" {
 variable "ai_enabled" {
   type    = bool
   default = false
+}
+
+variable "ai_provider" {
+  description = "Groq is the only supported provider; the backend refuses to start with anything else."
+  type        = string
+  default     = "groq"
+
+  validation {
+    condition     = var.ai_provider == "groq"
+    error_message = "ai_provider must be \"groq\"."
+  }
+}
+
+variable "ai_model" {
+  description = "Groq model ID."
+  type        = string
+  default     = "openai/gpt-oss-120b"
 }
 
 variable "image_tag" {

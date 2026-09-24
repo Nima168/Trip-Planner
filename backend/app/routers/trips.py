@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -38,6 +38,14 @@ def create_trip(
     if payload.end_date < payload.start_date:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be on or after start_date"
+        )
+    # The server doesn't know the user's timezone, so allow one day of slack: a user
+    # whose local "today" is still yesterday in UTC must not be rejected. The
+    # frontend enforces the exact rule (start date today or later, local time).
+    earliest_allowed = datetime.now(UTC).date() - timedelta(days=1)
+    if payload.start_date < earliest_allowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="start_date cannot be in the past"
         )
 
     trip = Trip(

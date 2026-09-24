@@ -149,7 +149,7 @@ No wrapper envelope — a successful response body *is* the resource (object or 
   "reply": "What are your start and end dates, including the year?"
 }
 ```
-- **Errors:** `401` invalid authentication; `422` invalid request or exceeded input bounds; `429` AI request limit reached (include integer-seconds `Retry-After`); `502` malformed/invalid model output; `503` AI disabled, unconfigured, or provider unavailable (including provider quota/rate-limit failure); `504` provider timeout.
+- **Errors:** `401` invalid authentication; `422` invalid request or exceeded input bounds; `429` AI request limit reached — either the per-user limit or the provider’s quota/rate limit (e.g. Groq tokens per minute; detail `AI provider is busy`) — always with integer-seconds `Retry-After`, which the API exposes to browsers via `Access-Control-Expose-Headers`; `502` malformed/invalid model output; `503` AI disabled, unconfigured, or provider unavailable; `504` provider timeout.
 - Use the existing `detail` error format; never return raw provider errors, prompts, or credentials. Only `401` triggers logout. User ambiguity is a `200` clarification, not a provider error.
 - This endpoint never creates a trip. The frontend submits reviewed details separately to the unchanged `POST /trips` endpoint after explicit confirmation.
 
@@ -185,7 +185,7 @@ No wrapper envelope — a successful response body *is* the resource (object or 
   ]
 }
 ```
-- **Error responses:** `400` `end_date` before `start_date` · `401` · `422` missing/malformed fields or invalid `trip_type`
+- **Error responses:** `400` `end_date` before `start_date`, or `start_date` in the past (detail `start_date cannot be in the past`; the server allows one day of slack because it doesn't know the user's timezone) · `401` · `422` missing/malformed fields or invalid `trip_type`
 
 ---
 
@@ -390,14 +390,14 @@ Invalid dates expressed in natural language should produce a valid clarification
 | 401  | Missing, invalid, or expired token; or bad login credentials |
 | 404  | Not found — including a resource that exists but belongs to another user (never `403`, to avoid confirming it exists) |
 | 422  | Request-shape validation error (missing/malformed field) |
-| 429  | AI endpoint request limit reached; retry after the supplied interval |
+| 429  | AI endpoint request limit reached (per-user limit or provider quota); retry after the `Retry-After` interval |
 | 500  | Unhandled server error |
 | 502  | Invalid AI provider output |
 | 503  | AI disabled/unconfigured or provider unavailable |
 | 504  | AI provider timeout |
 
 ## 7. Open Questions
-AI endpoint schemas and specified operational limits above are approved; the approved Anthropic/model choice and remaining implementation/release tasks are recorded in `AI-spec.md` §9. Existing trip contracts remain unchanged.
+AI endpoint schemas and specified operational limits above are approved; the approved Groq/model choice (`openai/gpt-oss-120b`) and remaining implementation/release tasks are recorded in `AI-spec.md` §9. Existing trip contracts remain unchanged.
 
 Previously resolved:
 - `username` is persisted in `localStorage` alongside the token (`frontend-spec.md` §5), not decoded from the JWT.

@@ -5,11 +5,14 @@ math); the backend only validates the *shape* of what comes back, via
 app/schemas/ai.py's strict TripDraftResponse model.
 """
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v3"
 
-RESULT_TOOL_NAME = "trip_draft_result"
+RESULT_SCHEMA_NAME = "trip_draft_result"
 
-RESULT_TOOL_SCHEMA = {
+# Sent as a strict JSON schema (Groq structured outputs), so every object must be
+# closed (`additionalProperties: false`) and list all of its properties as required;
+# optional values are expressed as `["string", "null"]` unions.
+RESULT_SCHEMA = {
     "type": "object",
     "properties": {
         "draft": {
@@ -21,12 +24,14 @@ RESULT_TOOL_SCHEMA = {
                 "trip_type": {"type": ["string", "null"]},
             },
             "required": ["destination", "start_date", "end_date", "trip_type"],
+            "additionalProperties": False,
         },
         "missing_fields": {"type": "array", "items": {"type": "string"}},
         "clarification_fields": {"type": "array", "items": {"type": "string"}},
         "reply": {"type": "string"},
     },
     "required": ["draft", "missing_fields", "clarification_fields", "reply"],
+    "additionalProperties": False,
 }
 
 SYSTEM_PROMPT = """You help a traveler create a trip by extracting four fields from a
@@ -64,8 +69,12 @@ Date handling (reason about this yourself; the backend does no date math):
   reinterpret as month/day. Two-digit years require clarification.
 - Duration: "N days" starting on a resolved start date ends at start + (N-1) days
   inclusive. "N nights" ends at start + N days.
-- Reject impossible dates and reversed ranges (same-day trips are fine; past dates are
-  allowed, there is no future-only restriction).
+- Reject impossible dates and reversed ranges (same-day trips are fine).
+- Trips must start today or later: a start_date before reference_date is not allowed.
+  Never put a past start_date in the draft — leave it null, list it in
+  clarification_fields, and ask for a start date on or after reference_date. (An
+  inferred year already picks the next occurrence, so this is only for dates the user
+  gives explicitly in the past.)
 
 Language: accept English and Hinglish (informal Romanized Hindi mixed with English),
 including ambiguous words like "kal" (yesterday or tomorrow) — ask when context
@@ -87,8 +96,8 @@ Conversation behavior:
   brief redirect back to collecting trip details.
 
 Output contract:
-- Call the `{tool_name}` tool exactly once with your result. Do not write any text
-  outside the tool call.
+- Respond with exactly one JSON object matching the `{schema_name}` schema, and
+  nothing else.
 - `draft` always has all four keys; a field you couldn't resolve is `null`.
 - `missing_fields`: names of fields that are simply absent so far.
 - `clarification_fields`: names of fields you have information for but it's
@@ -96,4 +105,4 @@ Output contract:
   A field is in exactly one of these two lists, never both, and together they cover
   every null field in `draft` — a non-null field appears in neither list.
 - `reply`: your plain-text message to the user (English, under 2000 characters).
-""".replace("{tool_name}", RESULT_TOOL_NAME)
+""".replace("{schema_name}", RESULT_SCHEMA_NAME)

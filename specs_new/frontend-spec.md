@@ -87,41 +87,31 @@ src/
 
 ## 7. UI/UX Requirements
 <!-- Design system or component library (if any), responsiveness, dark mode, accessibility (WCAG level), loading/empty/error states. -->
-- No formal design system; plain Tailwind utility styling, kept simple and consistent (single color/spacing scale used throughout).
+- Tailwind utility styling with a small shared layer in `src/index.css` (`.btn-primary`, `.btn-secondary`, `.btn-ghost`, `.btn-danger`, `.card`, `.field-label`, `.field-input`, `.chip`) so buttons, cards and inputs look the same everywhere.
+- **Visual direction:** warm "golden hour" travel look taken from the two hero photos in `public/images/`:
+  - `hero-clouds.jpg` (traveller above the clouds): the full-height panel on Login and Sign up.
+  - `hero-road.jpg` (road through Hampi): the banners on Home and Trip Itinerary.
+  - Photos always sit under a dark gradient so white text on them stays readable.
+- **Icons:** a small inline SVG set in `src/components/Icon.tsx` (adapted from Lucide, ISC license); no icon dependency.
 
 ### Design Tokens (colors & font)
-- **Font:** Fira Sans (loaded from Google Fonts), used as the sole typeface — no separate heading/body font pairing.
-- **Palette:** white + light brown background with dark blue as the accent/primary color.
+- **Fonts:** Fraunces (display serif, headings) + Fira Sans (body/UI), both from Google Fonts.
 
 | Token | Hex | Usage |
 |-------|-----|-------|
-| `background` | `#F3E9DA` | Page background (light brown) |
-| `surface` | `#FFFFFF` | Cards, panels, form fields, modals (white) |
-| `primary` | `#1B3A5F` | Buttons, links, active nav, headings accent (dark blue) |
-| `primary-hover` | `#14293F` | Hover/active state of primary elements |
-| `text` | `#22313F` | Body and heading text |
-| `text-muted` | `#8A7862` | Secondary text, placeholders, helper text |
-| `border` | `#E0D0B8` | Borders on cards/inputs (subtle against the background) |
-| `error` | `#C0392B` | Inline error/validation messages |
+| `background` | `#FBF6EF` | Page background (warm cream) |
+| `sand` / `sand-dark` | `#F5EBDD` / `#EADBC6` | Chips, skeletons, segmented controls |
+| `surface` | `#FFFFFF` | Cards, panels, form fields |
+| `primary` | `#B4561F` | Buttons, links, user chat bubbles (terracotta; white text meets WCAG AA at 4.9:1) |
+| `primary-hover` / `primary-soft` | `#96461A` / `#FBE9DC` | Hover state / tinted backgrounds |
+| `ink` | `#1F2A37` | Headings and body text |
+| `text-muted` | `#6B5E50` | Secondary text, helper text |
+| `gold` / `gold-soft` | `#E9A23B` / `#FDF1DC` | Highlights, "upcoming" badges, rate-limit notice |
+| `border` | `#EADFCF` | Card and input borders |
+| `error` / `error-soft` | `#B42318` / `#FDECEA` | Errors and destructive actions |
+| `success` / `success-soft` | `#1E7A4C` / `#E6F4EC` | Completed states (e.g. "4 of 4 ready") |
 
-Wired into Tailwind via `tailwind.config.js`:
-```js
-theme: {
-  extend: {
-    colors: {
-      background: '#F3E9DA',
-      surface: '#FFFFFF',
-      primary: { DEFAULT: '#1B3A5F', hover: '#14293F' },
-      text: { DEFAULT: '#22313F', muted: '#8A7862' },
-      border: '#E0D0B8',
-      error: '#C0392B',
-    },
-    fontFamily: {
-      sans: ['"Fira Sans"', 'sans-serif'],
-    },
-  },
-}
-```
+The tokens live in `tailwind.config.js`, which is the source of truth.
 - Dark mode is out of scope (see below), so no dark-mode variants of these tokens are needed for MVP.
 - Responsive: must be usable on both desktop and mobile browser widths (per `goal-spec.md` — no native mobile app).
 - Dark mode: out of scope for MVP.
@@ -168,7 +158,7 @@ This section owns the UI/UX changes. `AI-spec.md` owns extraction behavior; `api
 ### Entry, Layout & Components
 
 - Keep `/trips/new` and existing Home/back navigation. Approved default: show “Describe your trip” with a visible “Enter details manually” alternative.
-- Add `TripChat` for plain-text user/assistant messages and the composer, plus `TripDraftReview` for editable destination, start date, end date, and trip type. Keep transport in `src/api/` and shared contract types in `src/types/`.
+- Add `TripChat` for plain-text user/assistant messages and the composer, plus `TripDraftReview` for editable destination, start date, end date, and trip type. Dates before today (user's local date) are invalid: the date pickers use `min=today`, a past start or end date shows “… can't be in the past — choose today or a later date.”, and Create trip (button or chat “yes”) stays disabled until it's fixed. Keep transport in `src/api/` and shared contract types in `src/types/`.
 - Accept English and Hinglish (Hindi/English mixed in Latin script) in the composer. Show a short “English or Hinglish” input hint. Keep interface labels and all assistant replies in English, including responses to Hinglish input (`AI-spec.md`).
 - Opening prompt: “Where would you like to go, when, and who is travelling?” Show this persistent sample below the composer: “Goa from 03/04/2027 to 05/04/2027 with friends.” Pair it with the explanation “Dates use DD/MM/YYYY — this means 3–5 April 2027.” Do not rely on placeholder text alone; the convention must remain visible while typing. Do not preselect `solo` for an unresolved chat draft.
 - Use existing Fira Sans, colors, spacing, and Tailwind styling. On desktop, conversation and draft may sit side by side; on mobile, stack them without horizontal scrolling. Clearly label missing or unresolved fields.
@@ -198,5 +188,5 @@ This section owns the UI/UX changes. `AI-spec.md` owns extraction behavior; `api
 
 - Label the composer and editable fields; make send, mode switching, and confirmation keyboard-operable. Enter sends, Shift+Enter inserts a newline, and composition input must not submit prematurely.
 - Announce new replies/loading/errors with a polite live region; avoid re-announcing the whole transcript or moving focus on each reply. After a user requests review, focus the review heading or first unresolved field. Keep “Back to Trips” reachable throughout.
-- For `422`, show input/limit validation; for `429`, respect `Retry-After`; for `502`/`503`/`504`, show a brief failure message with retry/manual entry. Preserve draft and chat. Only authentication failure logs the user out.
+- For `422`, show input/limit validation; for `429`, respect `Retry-After`: show a friendly notice with a live countdown (“Our assistant needs a short breather… please wait N seconds”) and a progress bar, disable Send until it ends, then offer “Send again”. If the wait is over 2 minutes (a daily provider quota), say so and offer “Enter details manually”. Without a readable header, wait 60 seconds; for `502`/`503`/`504`, show a brief failure message with retry/manual entry. Preserve draft and chat. Only authentication failure logs the user out.
 - Verify complete and partial conversations, corrections, manual switching, stale responses, keyboard/mobile use, all error states, refresh/navigation restoration, account isolation, storage failure, interrupted creation, and duplicate-submit prevention. Run frontend build/lint and run the focused mocked-interaction tests with `npm test` (Vitest, Testing Library, and jsdom).

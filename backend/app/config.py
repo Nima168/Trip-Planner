@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,8 +13,9 @@ class Settings(BaseSettings):
     jwt_expiry_minutes: int = 30 * 24 * 60  # 30 days
 
     ai_enabled: bool = False
-    ai_provider: str = "anthropic"
-    ai_model: str = "claude-haiku-4-5-20251001"
+    # Groq is the only supported provider; any other AI_PROVIDER value fails at startup.
+    ai_provider: Literal["groq"] = "groq"
+    ai_model: str = "openai/gpt-oss-120b"
     ai_api_key: str = ""
     ai_timeout_seconds: float = 20.0
 

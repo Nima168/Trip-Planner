@@ -1,6 +1,6 @@
 # AI Spec — Conversational Trip Creation
 
-> **Status: Approved; implementation available on `codex-ai-feature`. Mocked checks cover the integration; live model evaluation and production activation remain pending.** Defines the AI behavior for Musafir Travels. This is the fifth specification, alongside `goal-spec.md`, `frontend-spec.md`, `backend-spec.md`, and `api-contract-spec.md`. The architect has approved integration through the existing FastAPI backend. Anthropic Claude Haiku (`claude-haiku-4-5-20251001`) is the approved provider/model choice. The architect has approved the specified defaults. Remaining implementation and release tasks are listed separately in §9.
+> **Status: Approved; implementation available on `codex-ai-feature`. Mocked checks cover the integration; live model evaluation and production activation remain pending.** Defines the AI behavior for Musafir Travels. This is the fifth specification, alongside `goal-spec.md`, `frontend-spec.md`, `backend-spec.md`, and `api-contract-spec.md`. The architect has approved integration through the existing FastAPI backend. Groq with `openai/gpt-oss-120b` is the approved provider/model choice. The architect has approved the specified defaults. Remaining implementation and release tasks are listed separately in §9.
 
 ## 1. Purpose & Scope
 
@@ -28,7 +28,7 @@ Add `POST /api/v1/ai/trip-draft` to the existing authenticated API. The backend 
 
 The frontend keeps the bounded conversation and current draft locally, persists the unfinished flow in browser storage for restoration, and sends the required context with each AI request. The backend stores no chat sessions and performs no trip writes through this endpoint. Existing authentication may still read the user database. After explicit review, the frontend uses `useCreateTrip` and the unchanged `POST /api/v1/trips` contract. No database migration is needed.
 
-Keep provider credentials exclusively server-side, supplied through the existing ECS/Secrets Manager pattern. The frontend remains a static Vite SPA on Vercel; no additional proxy or serverless service is planned. Use Anthropic Claude Haiku with the exact model ID `claude-haiku-4-5-20251001`; do not substitute an alias or another model without an architect decision. Use the official Anthropic Python SDK; the implementation pins version `1.6.0`.
+Keep provider credentials exclusively server-side, supplied through the existing ECS/Secrets Manager pattern. The frontend remains a static Vite SPA on Vercel; no additional proxy or serverless service is planned. Use Groq with the exact model ID `openai/gpt-oss-120b`; do not substitute an alias or another model without an architect decision. Use the official `groq` Python SDK; the implementation pins version `1.7.0`.
 
 ## 3. Required Trip Details
 
@@ -61,7 +61,7 @@ Examples: “by myself” → `solo`; “with my spouse or partner or girl frien
 - Show dates with written month names and four-digit years in conversational replies and review summaries so users can verify the interpretation. UI examples and helper text must explain the convention (`frontend-spec.md` §12).
 - **Next weekend — resolved:** Infer the upcoming Saturday–Sunday using the fixed local `reference_date`: the first Saturday on or after that date, followed by Sunday. On Saturday, this includes today and tomorrow; on Sunday, use the following Saturday–Sunday. State the interpretation and show both exact dates, including years, for confirmation. If the user explicitly supplies different dates, honor those dates. Impossible dates still require correction.
 - **Duration — resolved:** With a resolved start date and a duration of N days, calculate the inclusive end as start + N − 1 calendar days. For N nights, calculate start + N days. For example, three days starting 10 June ends on 12 June; three nights ends on 13 June. Apply the approved year-inference rule if the year is omitted. Present derived dates for confirmation; ask if the duration's meaning is unclear.
-- Reject impossible dates and reversed ranges. Allow same-day trips. Do not introduce a future-only restriction: the existing contract does not prohibit past dates.
+- Reject impossible dates and reversed ranges. Allow same-day trips. Trips must start today or later (decision 2026-09-25): a start date before `reference_date` is never put in the draft. Leave it null, flag it for clarification, and ask for a date on or after today.
 
 ### Language Handling
 
@@ -102,7 +102,7 @@ The backend must validate the model result with strict schemas and deterministic
 - **Message size — resolved:** Maximum 2,000 characters per user or assistant message. Enforce the user-input limit before sending and validate the assistant reply on the backend.
 - **Aggregate message size — resolved:** Each AI request may contain at most 12,000 characters summed across all message contents, including the latest user message. This excludes draft fields and server-owned instructions. Preserve history rather than silently truncating it; when a request would exceed the limit, offer manual completion or restart.
 - Use the bounded request and error contract in `api-contract-spec.md`. The approved provider timeout is 20 seconds; on timeout, preserve the draft and offer retry or manual entry.
-- Apply the backend AI rate limit and disable provider SDK automatic retries for the initial version. Cap each model response at 1,024 output tokens, covering the full structured result and conversational reply. The approved Anthropic usage budget is US$5 per month for Musafir. Configure and verify enforcement before production use; the per-process request limiter is not a spending cap. Anthropic’s standard API data-handling and retention policy is accepted; zero data retention is not required. Verify the applicable policy and account settings before production use without assuming a specific retention duration.
+- Apply the backend AI rate limit and disable provider SDK automatic retries for the initial version. Request the result with Groq’s strict JSON-schema structured output (constrained decoding), not tool calling, which intermittently fails for this model. Cap each model response at 4,096 completion tokens with reasoning effort `low`. `openai/gpt-oss-120b` is a reasoning model whose reasoning tokens count toward this limit; the structured result and conversational reply themselves stay small. The approved Groq usage budget is US$5 per month for Musafir. Configure and verify enforcement before production use; the per-process request limiter is not a spending cap. Groq’s standard API data-handling and retention policy is accepted; zero data retention is not required. Verify the applicable policy and account settings before production use without assuming a specific retention duration.
 
 ## 7. Acceptance & Evaluation
 
@@ -147,11 +147,11 @@ Backend evaluation must also cover authentication before provider calls, request
 ## 8. Approved Decisions
 
 - **Execution — resolved:** existing FastAPI backend calls a hosted model through a new authenticated endpoint; trip persistence and database schema stay unchanged.
-- **Provider/model — resolved:** Anthropic; Claude Haiku, pinned to `claude-haiku-4-5-20251001`.
-- **Provider data handling — resolved:** Accept Anthropic’s standard API data-handling and retention policy; no zero-data-retention requirement. Application-level restrictions on credential sharing and raw-chat logging remain unchanged.
-- **SDK — resolved:** Official Anthropic Python SDK, pinned to version `1.6.0`.
-- **Monthly spending budget — resolved:** US$5 per month for Musafir’s Anthropic usage. Budget enforcement must cover all users and backend instances; manual trip entry remains available when AI usage is blocked.
-- **Output budget — resolved:** Maximum 1,024 output tokens per model response, including structured trip fields and conversational text. Truncated output is a failed extraction; never submit a partial draft.
+- **Provider/model — resolved:** Groq; `openai/gpt-oss-120b` (`AI_PROVIDER=groq`, the only supported value).
+- **Provider data handling — resolved:** Accept Groq’s standard API data-handling and retention policy; no zero-data-retention requirement. Application-level restrictions on credential sharing and raw-chat logging remain unchanged.
+- **SDK — resolved:** Official `groq` Python SDK, pinned to version `1.7.0`.
+- **Monthly spending budget — resolved:** US$5 per month for Musafir’s Groq usage. Budget enforcement must cover all users and backend instances; manual trip entry remains available when AI usage is blocked.
+- **Output budget — resolved:** Maximum 4,096 completion tokens per model response (reasoning effort `low`), including the model’s reasoning tokens, structured trip fields and conversational text. Truncated output is a failed extraction; never submit a partial draft.
 - **Languages — resolved:** Accept English and Hinglish (mixed Hindi/English in Latin script). Devanagari Hindi and other languages are not required for this version. Assistant replies are always in English, including for Hinglish input.
 - **Missing years — resolved:** Infer the next occurrence and show exact dates, including years, for confirmation (see §4).
 - **Numeric dates — resolved:** Use day/month/year consistently; show a UI sample and written-month interpretation.

@@ -13,6 +13,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Not CORS-safelisted, so the browser hides it from the frontend unless exposed;
+    # the chat reads it to show how long to wait after a 429.
+    expose_headers=["Retry-After"],
 )
 
 register_exception_handlers(app)

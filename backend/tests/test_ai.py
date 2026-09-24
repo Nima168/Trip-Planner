@@ -4,6 +4,7 @@ from app.main import app
 from app.routers.ai import _request_log
 from app.services.ai_service import (
     AIProviderInvalidOutput,
+    AIProviderRateLimited,
     AIProviderTimeout,
     AIProviderUnavailable,
     get_default_adapter,
@@ -202,6 +203,16 @@ def test_unknown_key_rejected_422(client):
 
     resp = client.post("/api/v1/ai/trip-draft", json=payload, headers=headers)
     assert resp.status_code == 422
+
+
+def test_provider_rate_limit_returns_429_with_retry_after(client):
+    headers = auth_headers(client)
+    _override_adapter(FakeAdapter(error=AIProviderRateLimited(retry_after_seconds=12)))
+
+    resp = client.post("/api/v1/ai/trip-draft", json=VALID_REQUEST, headers=headers)
+    assert resp.status_code == 429
+    assert resp.headers["Retry-After"] == "12"
+    assert resp.json()["detail"] == "AI provider is busy"
 
 
 def test_rate_limit_returns_429(client):

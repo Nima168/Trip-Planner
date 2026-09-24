@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Musafir Travels v2 — Production Architecture",
+    "output": "musafir-v2.architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "request-path", "label": "A user request", "focus": ["browser", "vercel", "alb", "api", "rds"], "note": "Browser to Vercel over HTTPS, proxied to the ALB, handled by FastAPI, stored in PostgreSQL." },
+      { "id": "ai-path", "label": "AI trip draft", "focus": ["api", "groq", "secrets"], "note": "FastAPI reads the Groq key from Secrets Manager and asks gpt-oss-120b for a strict JSON draft." },
+      { "id": "delivery", "label": "Deploy pipeline", "focus": ["gha", "ecr", "api"], "note": "GitHub Actions tests, pushes the image to ECR, migrates the database and rolls out ECS." },
+      { "id": "https-future", "label": "CloudFront (pending)", "focus": ["vercel", "cloudfront", "alb"], "note": "Planned HTTPS edge for the API, blocked until AWS account verification." }
+    ]
+  },
+  "components": [
+    { "id": "browser", "type": "external", "label": "User's browser", "sublabel": "any device", "pos": [40, 300], "size": [140, 64] },
+    { "id": "vercel", "type": "frontend", "label": "Vercel", "sublabel": "React SPA + /api proxy", "brand": "vercel", "pos": [260, 300], "size": [170, 64] },
+    { "id": "cloudfront", "type": "cloud", "label": "CloudFront", "sublabel": "pending AWS verification", "pos": [505, 110], "size": [180, 64], "tag": "not deployed" },
+    { "id": "alb", "type": "cloud", "label": "Load Balancer", "sublabel": "ALB :80", "pos": [520, 300], "size": [150, 64] },
+    { "id": "api", "type": "backend", "label": "FastAPI", "sublabel": "ECS Fargate :8000", "brand": "fastapi", "pos": [760, 300], "size": [160, 64] },
+    { "id": "rds", "type": "database", "label": "PostgreSQL", "sublabel": "RDS, private", "brand": "postgresql", "pos": [1010, 300], "size": [150, 64] },
+    { "id": "groq", "type": "external", "label": "Groq API", "sublabel": "openai/gpt-oss-120b", "pos": [755, 110], "size": [170, 64] },
+    { "id": "secrets", "type": "security", "label": "Secrets Manager", "sublabel": "DB URL, JWT, Groq key", "pos": [1000, 490], "size": [170, 64] },
+    { "id": "ecr", "type": "cloud", "label": "ECR", "sublabel": "image per commit", "pos": [760, 490], "size": [160, 64] },
+    { "id": "gha", "type": "external", "label": "GitHub Actions", "sublabel": "CI + deploy", "brand": "github-actions", "pos": [510, 490], "size": [170, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "AWS us-east-1 (Terraform)", "wraps": ["alb", "api", "rds", "secrets", "ecr"] },
+    { "kind": "security-group", "label": "private subnets", "wraps": ["api", "rds"] }
+  ],
+  "connections": [
+    { "id": "browser-to-vercel", "from": "browser", "to": "vercel", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "vercel-to-alb", "from": "vercel", "to": "alb", "label": "/api (HTTP)", "variant": "emphasis" },
+    { "id": "alb-to-api", "from": "alb", "to": "api", "label": "forward", "variant": "emphasis" },
+    { "id": "api-to-rds", "from": "api", "to": "rds", "label": "SQL", "variant": "emphasis" },
+    { "id": "api-to-groq", "from": "api", "to": "groq", "label": "HTTPS", "fromSide": "top", "toSide": "bottom", "labelDy": -30 },
+    { "id": "secrets-to-api", "from": "secrets", "to": "api", "label": "inject", "variant": "security" },
+    { "id": "gha-to-ecr", "from": "gha", "to": "ecr", "label": "push" },
+    { "id": "ecr-to-api", "from": "ecr", "to": "api", "label": "deploy", "variant": "dashed", "fromSide": "top", "toSide": "bottom" },
+    { "id": "vercel-to-cloudfront", "from": "vercel", "to": "cloudfront", "label": "future", "variant": "dashed", "fromSide": "top", "toSide": "left" },
+    { "id": "cloudfront-to-alb", "from": "cloudfront", "to": "alb", "variant": "dashed", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Request path", "items": ["HTTPS to Vercel; /api proxied to the ALB", "FastAPI on ECS Fargate, JWT auth", "PostgreSQL on RDS in private subnets"] },
+    { "dot": "violet", "title": "AI", "items": ["Groq openai/gpt-oss-120b", "Strict JSON-schema output", "429 + Retry-After drives the countdown"] },
+    { "dot": "amber", "title": "Pending", "items": ["CloudFront HTTPS for the API", "Blocked until AWS account verification"] }
+  ]
+}

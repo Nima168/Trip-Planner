@@ -59,53 +59,17 @@ jobs:
     name: Run Alembic migration
     needs: build-and-push
     runs-on: ubuntu-latest
+    outputs:
+      task_def_arn: ${{ steps.register.outputs.task_def_arn }}
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      # One-off ECS task running `alembic upgrade head` against the new
-      # image, ahead of the service update below — deliberately not run
-      # in-container on every app start (see backend/entrypoint.sh and
-      # specs_new/backend-spec.md §9), so a rolling deploy with several
-      # tasks starting concurrently can't race the migration.
-      - name: Run migration task and wait for it to finish
-        env:
-          IMAGE: ${{ needs.build-and-push.outputs.image }}
-        run: |
-          set -eu
-          TASK_ARN=$(aws ecs run-task \
-            --cluster "${{ vars.ECS_CLUSTER }}" \
-            --task-definition "${{ vars.ECS_TASK_FAMILY }}" \
-            --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=[${{ vars.ECS_PRIVATE_SUBNET_IDS }}],securityGroups=[${{ vars.ECS_SECURITY_GROUP_ID }}],assignPublicIp=DISABLED}" \
-            --overrides "{\"containerOverrides\":[{\"name\":\"backend\",\"image\":\"$IMAGE\",\"command\":[\"alembic\",\"upgrade\",\"head\"]}]}" \
-            --query 'tasks[0].taskArn' --output text)
-
-          echo "Migration task: $TASK_ARN"
-          aws ecs wait tasks-stopped --cluster "${{ vars.ECS_CLUSTER }}" --tasks "$TASK_ARN"
-
-          EXIT_CODE=$(aws ecs describe-tasks \
-            --cluster "${{ vars.ECS_CLUSTER }}" --tasks "$TASK_ARN" \
-            --query 'tasks[0].containers[0].exitCode' --output text)
-
-          if [ "$EXIT_CODE" != "0" ]; then
-            echo "Migration task exited with code $EXIT_CODE" >&2
-            aws ecs describe-tasks --cluster "${{ vars.ECS_CLUSTER }}" --tasks "$TASK_ARN"
-            exit 1
-          fi
-
-  deploy:
-    name: Deploy to ECS
-    needs: [build-and-push, migrate]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-
+      # ECS run-task overrides can't change a container's image, so the new
+      # image is registered as a task definition revision first; the
+      # migration below and the service update in `deploy` both use it.
       - name: Register new task definition revision
         id: register
         env:
@@ -126,13 +90,52 @@ jobs:
             --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "task_def_arn=$NEW_ARN" >> "$GITHUB_OUTPUT"
 
+      # One-off ECS task running `alembic upgrade head` against the new
+      # image, ahead of the service update below — deliberately not run
+      # in-container on every app start (see backend/entrypoint.sh and
+      # specs_new/backend-spec.md §9), so a rolling deploy with several
+      # tasks starting concurrently can't race the migration.
+      - name: Run migration task and wait for it to finish
+        run: |
+          set -eu
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "${{ vars.ECS_CLUSTER }}" \
+            --task-definition "${{ steps.register.outputs.task_def_arn }}" \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ vars.ECS_PRIVATE_SUBNET_IDS }}],securityGroups=[${{ vars.ECS_SECURITY_GROUP_ID }}],assignPublicIp=DISABLED}" \
+            --overrides '{"containerOverrides":[{"name":"backend","command":["alembic","upgrade","head"]}]}' \
+            --query 'tasks[0].taskArn' --output text)
+
+          echo "Migration task: $TASK_ARN"
+          aws ecs wait tasks-stopped --cluster "${{ vars.ECS_CLUSTER }}" --tasks "$TASK_ARN"
+
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster "${{ vars.ECS_CLUSTER }}" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Migration task exited with code $EXIT_CODE" >&2
+            aws ecs describe-tasks --cluster "${{ vars.ECS_CLUSTER }}" --tasks "$TASK_ARN"
+            exit 1
+          fi
+
+  deploy:
+    name: Deploy to ECS
+    needs: migrate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
       - name: Update service and wait for rollout
         run: |
           set -eu
           aws ecs update-service \
             --cluster "${{ vars.ECS_CLUSTER }}" \
             --service "${{ vars.ECS_SERVICE }}" \
-            --task-definition "${{ steps.register.outputs.task_def_arn }}" \
+            --task-definition "${{ needs.migrate.outputs.task_def_arn }}" \
             >/dev/null
           aws ecs wait services-stable \
             --cluster "${{ vars.ECS_CLUSTER }}" \

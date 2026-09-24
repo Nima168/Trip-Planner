@@ -121,13 +121,25 @@ Last updated: 2026-09-24.
 - **Manual (user):** localhost frontend against AWS works: sign up and log in, stay logged in after refresh, trip CRUD, Save as PDF.
 - **Reports:** `infra/VERIFICATION-REPORT-phase7-deploy.html`, `frontend/VERIFICATION-REPORT-auth-refresh-pdf.html`.
 
+## Production rollout (2026-09-25)
+
+- Terraform switched the ECS task to Groq (`AI_PROVIDER=groq`, `AI_MODEL=openai/gpt-oss-120b`). Then the user set `ai_enabled = true` and applied with `TF_VAR_ai_api_key`; the stored secret is a real Groq key (checked by prefix and length only).
+- Commits `c150495` (backend, infra, specs) and `edf66d3` (frontend) were deployed; ECS now runs `musafir-backend:11` with AI enabled.
+- **Bug fixed (`6722c9f`):** a manual `workflow_dispatch` redeploy failed because ECR tags are immutable and that commit's image tag already existed. The workflow now reuses the image when the tag exists, checked with `batch-get-image` because the deploy role lacks `ecr:DescribeImages`. Proven by a manual re-run: build step 9 s, image reused.
+- **Live on AWS:**
+  - A complete request returns 200 in about 1.5 s with a full draft.
+  - Past dates are left empty, and the reply asks for dates from today.
+  - A burst of 8 requests gave 6 × 200 and 2 × 429 (`Retry-After: 9`), with `Retry-After` exposed via CORS.
+  - `POST /trips` with a past start date returns 400.
+- **Still true:** the Vercel frontend can't call the HTTP-only ALB until CloudFront is unblocked, so the new UI is used through the local frontend pointed at AWS.
+
 ## What's left
 
 - **Blocked on AWS:**
   - Account verification for CloudFront/HTTPS.
   - Account plan upgrade for more than 1 day of RDS backups.
 - **Phase 8:**
-  - Enable AI on Groq: provide a Groq API key via `TF_VAR_ai_api_key`, set `ai_enabled=true`, apply and deploy. Provider and model are already set in `terraform.tfvars`. Check Groq's free-tier or spend limits against the US$5/month budget.
+  - ~~Enable AI on Groq~~: done 2026-09-25. Remaining: check Groq's free-tier or spend limits against the US$5/month budget, and remember every `terraform apply` needs `TF_VAR_ai_api_key`.
   - Full live test: AI chat scenarios, draft restore after refresh, account isolation.
   - Point Vercel's `VITE_API_BASE_URL` at CloudFront, swap the production domain, then shut down Render after a quiet period.
   - Confirm the v1 SQLite data was discarded.

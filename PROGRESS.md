@@ -98,7 +98,7 @@ Last updated: 2026-09-24.
 - **CloudFront blocked:** `CreateDistribution` returns 403 "Your account must be verified before you can add new CloudFront resources" (request ID `e6f897ad-a7d2-402a-bfb2-5504772c6758`).
   - The `cdn` module is commented out.
   - `api_base_url` points at the ALB over HTTP: `http://musafir-alb-1646923822.us-east-1.elb.amazonaws.com/api/v1`.
-- **CORS:** `allowed_origins` = `https://musafir-travels.vercel.app,http://localhost:5173`.
+- **CORS:** `allowed_origins` = `https://musafir-trip-planner.vercel.app,http://localhost:5173`. It was `musafir-travels.vercel.app`, an unrelated site's domain, until 2026-09-25.
 - **RDS backups:** raised from 0 to 1 day. 7 days was rejected with `FreeTierRestrictionError`; the account's free plan caps it at 1.
   - Applying the change restarted RDS (`apply_immediately = true`). The first request on each stale pooled connection then returned 500 (`AdminShutdown`).
   - Fixed with SQLAlchemy `pool_pre_ping=True`. A local simulation (killing a pooled connection on the server) fails without the flag and succeeds with it.
@@ -145,6 +145,12 @@ Last updated: 2026-09-24.
   - a past date in manual entry shows its error;
   - the browser only contacts the Vercel domain, with no console errors.
 - Through the proxy: `/api` responses aren't cached (`X-Vercel-Cache: MISS`), and a burst of 8 AI requests gave 5 × 200 and 3 × 429 with `Retry-After` 7–10 s passed through, so the countdown works.
+
+## Final cleanup (2026-09-25)
+
+- `allowed_origins` now uses the real Vercel domain. Applied with `-target=module.ecs.aws_ecs_task_definition.backend`, so the Groq key secret wasn't touched and no `TF_VAR_ai_api_key` was needed; afterwards I checked the key was still intact.
+- The production test user `phase7check_1790252346` was deleted with a one-off ECS task (`python -c`, ORM cascade to trips, days and activities). Its login now returns 401, and 1 real user remains.
+- Removed the stray `infra/environments/prod/plan.txt`.
 
 ## What's left
 

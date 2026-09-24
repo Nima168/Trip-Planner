@@ -11,7 +11,7 @@ github_oidc_sub = "repo:OWNER@12345/REPO@67890:ref:refs/heads/trip_planner.AI"
 
 # The deployed Vercel production domain. Preview-domain (*.vercel.app) CORS
 # handling is application-side, not a literal wildcard here.
-allowed_origins = "https://musafir-travels.vercel.app"
+allowed_origins = "https://musafir-trip-planner.vercel.app,http://localhost:5173"
 
 ai_enabled  = false
 ai_provider = "groq"

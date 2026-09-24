@@ -120,7 +120,7 @@ svg text{fill:var(--ink);font:13px system-ui,sans-serif}svg .box{fill:var(--card
 <section><h2>9. Known Issues and Limitations</h2><ul>
 <li><b>No HTTPS:</b> CloudFront is blocked until AWS verifies the account, so the API runs over plain HTTP and passwords and tokens are unencrypted in transit. The Vercel (HTTPS) frontend can't call this API because browsers block mixed content, so only localhost works for now.</li>
 <li><b>AI disabled:</b> <code>ai_enabled=false</code>. To enable it, set it to true and apply with <code>-var ai_api_key=…</code>, then deploy again.</li>
-<li><b>No RDS backups:</b> <code>backup_retention_days=0</code>.</li>
+<li><b>RDS backups:</b> <s><code>backup_retention_days=0</code></s>. Update 2026-09-24: raised to 1 day, the maximum the AWS free plan allows (7 was rejected with FreeTierRestrictionError). The backend engine now uses <code>pool_pre_ping=True</code>, so the RDS restart this change caused no longer produces a one-off 500 on stale connections.</li>
 <li><b>Test data:</b> test user <code>phase7check_1790252346</code> remains in the database (there's no delete-user endpoint). Its trip was deleted.</li>
 <li><b>CI warnings (not failures):</b> Node 20 deprecation on <code>actions/*@v4</code>, and 2 frontend lint warnings (<code>useDraftPersistence.ts:82</code> setState in an effect, <code>AuthContext.tsx:81</code> fast refresh).</li>
 <li>Git still shows <code>plan.txt</code> as untracked. It isn't committed.</li>

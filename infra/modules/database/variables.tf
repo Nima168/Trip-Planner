@@ -43,8 +43,9 @@ variable "engine_version" {
 }
 
 variable "backup_retention_days" {
-  type    = number
-  default = 0
+  description = "AWS free-plan accounts reject anything above 1 (FreeTierRestrictionError); raise to 7 after upgrading the account plan."
+  type        = number
+  default     = 1
 }
 
 variable "restore_from_snapshot" {

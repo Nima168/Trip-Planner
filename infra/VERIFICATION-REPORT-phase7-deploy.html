@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 7 Deploy Verification</title>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--ink:#1d1d1f;--muted:#5f6368;--line:#e2e2de;--ok:#1e7d3a;--okbg:#e5f4e9;--warn:#9a6200;--warnbg:#fdf2dc;--bad:#b3261e;--badbg:#fbe6e4;--accent:#2f5bd3;--code:#f0f0ec}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141416;--card:#1d1d20;--ink:#ececec;--muted:#a0a0a6;--line:#2e2e33;--ok:#6fd08c;--okbg:#17301f;--warn:#f0b64d;--warnbg:#33280f;--bad:#f28b82;--badbg:#3a1a18;--accent:#8ab4f8;--code:#26262a}}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:960px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:1.6rem;margin:0 0 4px}h2{font-size:1.15rem;margin:0 0 12px}
+.sub{color:var(--muted);margin:0 0 24px}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:0 0 16px}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600}
+.wrap{overflow-x:auto}
+code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px;word-break:break-all}
+.b{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+.ok{background:var(--okbg);color:var(--ok)}.warn{background:var(--warnbg);color:var(--warn)}.bad{background:var(--badbg);color:var(--bad)}
+ol li,ul li{margin:4px 0}
+svg text{fill:var(--ink);font:13px system-ui,sans-serif}svg .box{fill:var(--card);stroke:var(--accent);stroke-width:1.5}svg .fix{fill:var(--okbg);stroke:var(--ok);stroke-width:1.5}svg .ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+</style>
+</head>
+<body><main>
+<h1>Phase 7 Deploy Verification</h1>
+<p class="sub">Trip Planner (Musafir) · branch <code>trip_planner.AI</code> · 2026-09-24 · Deploy run <code>35997566002</code></p>
+
+<section><h2>1. Original Request</h2>
+<p>Continue the Phase 7 checks against the ALB (<code>http://&lt;alb&gt;/api/v1</code>), with the frontend tested from localhost. Steps: (1) set the GitHub Actions variables (done by the user), (2) allow <code>http://localhost:5173</code> in CORS and run <code>terraform apply</code>, (3) commit and push to trigger <code>deploy.yml</code>, then check the live API.</p></section>
+
+<section><h2>2. Implementation Summary</h2>
+<ul>
+<li><b>Step 2:</b> ran <code>terraform apply</code> (1 add, 1 change, 1 destroy). This created task definition <code>musafir-backend:3</code> with localhost in <code>CORS_ORIGINS</code> and set the RDS master password in state.</li>
+<li><b>Step 3:</b> committed the pending infra changes (<code>70a88ab</code>) and pushed them. The first Deploy run failed at the migration step: <code>aws ecs run-task</code> rejected <code>image</code> in <code>containerOverrides</code> (ECS doesn't allow overriding the image).</li>
+<li><b>Fix (<code>febfe8d</code>):</b> the step that registers the new task definition revision moved into the <code>migrate</code> job. The migration now runs on that revision with only a <code>command</code> override, and the <code>deploy</code> job rolls out the same revision (the job passes it on as an output). The second run passed.</li>
+<li><b>Result:</b> the Alembic migration created the tables, and the database-backed endpoints work through the ALB.</li>
+</ul>
+<div class="wrap"><svg viewBox="0 0 900 150" width="100%" style="min-width:640px" role="img" aria-label="Deploy pipeline">
+<rect class="box" x="10" y="45" width="120" height="50" rx="8"/><text x="70" y="75" text-anchor="middle">test (CI)</text>
+<rect class="box" x="165" y="45" width="140" height="50" rx="8"/><text x="235" y="67" text-anchor="middle">build-and-push</text><text x="235" y="84" text-anchor="middle">ECR :sha</text>
+<rect class="fix" x="340" y="25" width="200" height="90" rx="8"/><text x="440" y="50" text-anchor="middle">migrate</text><text x="440" y="72" text-anchor="middle">1. register revision (new)</text><text x="440" y="92" text-anchor="middle">2. run-task alembic upgrade</text>
+<rect class="box" x="575" y="45" width="150" height="50" rx="8"/><text x="650" y="67" text-anchor="middle">deploy</text><text x="650" y="84" text-anchor="middle">update-service</text>
+<rect class="box" x="760" y="45" width="130" height="50" rx="8"/><text x="825" y="75" text-anchor="middle">GET /health</text>
+<path class="ln" d="M130 70H165M305 70H340M540 70H575M725 70H760"/>
+<text x="440" y="140" text-anchor="middle" style="fill:var(--muted)">task_def_arn is passed from migrate to deploy as a job output</text>
+</svg></div></section>
+
+<section><h2>3. Files Changed</h2><div class="wrap"><table>
+<tr><th>File</th><th>Change</th><th>Commit</th></tr>
+<tr><td><code>.github/workflows/deploy.yml</code></td><td>Removed the OIDC debug step. Moved registering the task definition into <code>migrate</code> and dropped the <code>image</code> override. <code>deploy</code> now takes the revision from <code>migrate</code>'s output.</td><td>70a88ab, febfe8d</td></tr>
+<tr><td><code>infra/environments/prod/main.tf</code></td><td>CloudFront <code>cdn</code> module commented out. Placeholder AI key used when <code>ai_enabled=false</code>.</td><td>70a88ab</td></tr>
+<tr><td><code>infra/environments/prod/outputs.tf</code></td><td><code>api_base_url</code> now points at the ALB over HTTP. CloudFront output commented out.</td><td>70a88ab</td></tr>
+<tr><td><code>infra/modules/database/main.tf</code>, <code>variables.tf</code></td><td>ASCII-only security group description. <code>backup_retention_days</code> set to 0.</td><td>70a88ab</td></tr>
+<tr><td><code>infra/modules/ecs/main.tf</code></td><td>ASCII-only security group description.</td><td>70a88ab</td></tr>
+<tr><td><code>infra/environments/prod/terraform.tfvars</code> (gitignored)</td><td><code>allowed_origins</code> now includes <code>http://localhost:5173</code> (edited by the user)</td><td>not committed</td></tr>
+<tr><td><code>infra/VERIFICATION-REPORT-phase7-deploy.html</code></td><td>This report (new)</td><td>not committed</td></tr>
+</table></div></section>
+
+<section><h2>4. Acceptance Criteria</h2><div class="wrap"><table>
+<tr><th>Criterion</th><th>Status</th></tr>
+<tr><td>All 9 GitHub repository variables set</td><td><span class="b ok">Met</span></td></tr>
+<tr><td>CORS allows <code>http://localhost:5173</code> and Vercel, and rejects other origins</td><td><span class="b ok">Met</span></td></tr>
+<tr><td>Deploy runs end to end: test → build → migrate → deploy → health</td><td><span class="b ok">Met</span> (run 35997566002)</td></tr>
+<tr><td>Database tables created by the migration</td><td><span class="b ok">Met</span> (sign-up now returns 201)</td></tr>
+<tr><td>Log-in and trip/day/activity create, edit and delete work through the ALB</td><td><span class="b ok">Met</span></td></tr>
+<tr><td>AI draft works</td><td><span class="b warn">Deferred</span>: <code>ai_enabled=false</code>, returns 503 "AI is currently unavailable" as designed</td></tr>
+<tr><td>Frontend on localhost works against the ALB in a browser</td><td><span class="b warn">Pending your manual check</span></td></tr>
+<tr><td>HTTPS through CloudFront</td><td><span class="b bad">Blocked</span>: AWS account verification pending (CreateDistribution returned 403)</td></tr>
+</table></div></section>
+
+<section><h2>5. Tests Executed and Results</h2><div class="wrap"><table>
+<tr><th>#</th><th>Check</th><th>Expected</th><th>Actual</th></tr>
+<tr><td>—</td><td>Deploy run 35997247824 (first attempt)</td><td>success</td><td><span class="b bad">Failed</span> migrate: ParamValidation on the <code>image</code> override</td></tr>
+<tr><td>—</td><td>Deploy run 35997566002 (after fix): frontend checks, backend tests, build, migrate, deploy, health</td><td>all pass</td><td><span class="b ok">Passed</span></td></tr>
+<tr><td>1</td><td>GET /health</td><td>200</td><td><span class="b ok">200</span></td></tr>
+<tr><td>2</td><td>CORS preflight from localhost:5173 / Vercel / evil.example.com</td><td>200 / 200 / 400</td><td><span class="b ok">200 / 200 / 400</span></td></tr>
+<tr><td>3</td><td>Sign up; sign up again with the same username</td><td>201; 400</td><td><span class="b ok">201; 400</span></td></tr>
+<tr><td>4–5</td><td>Log in; log in with the wrong password</td><td>token; 401</td><td><span class="b ok">token; 401</span></td></tr>
+<tr><td>6</td><td>GET /trips with no token</td><td>401</td><td><span class="b ok">401</span></td></tr>
+<tr><td>7</td><td>Create trip Oct 1–3</td><td>201, 3 days</td><td><span class="b ok">3 days</span></td></tr>
+<tr><td>8</td><td>Create trip with end date before start date</td><td>400</td><td><span class="b ok">400</span></td></tr>
+<tr><td>9–11</td><td>Add activity; add an empty activity; edit activity</td><td>201; 400; 200</td><td><span class="b ok">ok; 400; 200</span></td></tr>
+<tr><td>12–13</td><td>Get trip (shows the edited text); list trips</td><td>"Visit art museum"; 1</td><td><span class="b ok">match</span></td></tr>
+<tr><td>14</td><td>POST /ai/trip-draft</td><td>503 while AI is disabled</td><td><span class="b ok">503</span></td></tr>
+<tr><td>15–17</td><td>Delete activity; delete trip; get the deleted trip</td><td>204; 204; 404</td><td><span class="b ok">204; 204; 404</span></td></tr>
+</table></div></section>
+
+<section><h2>6. Exact Page / URL to Test</h2>
+<ul>
+<li>API: <code>http://musafir-alb-1646923822.us-east-1.elb.amazonaws.com/api/v1</code></li>
+<li>Health: <code>http://musafir-alb-1646923822.us-east-1.elb.amazonaws.com/health</code></li>
+<li>Frontend (local): <code>http://localhost:5173</code></li>
+<li>Workflow run: <code>https://github.com/Nima168/Trip-Planner/actions/runs/35997566002</code></li>
+</ul></section>
+
+<section><h2>7. Step-by-Step Manual Verification</h2><ol>
+<li>Open the health URL in a browser.</li>
+<li>In <code>frontend/</code>, set <code>VITE_API_BASE_URL=http://musafir-alb-1646923822.us-east-1.elb.amazonaws.com/api/v1</code> (in <code>.env.local</code>) and run <code>npm run dev</code>.</li>
+<li>Open <code>http://localhost:5173</code> and sign up with a new username.</li>
+<li>Log out, then log in again.</li>
+<li>Create a trip with a destination, dates and trip type.</li>
+<li>Add an activity to day 1, edit it, then delete it.</li>
+<li>Export the trip as a PDF.</li>
+<li>Open the AI chat and send a message.</li>
+<li>Delete the trip.</li>
+</ol></section>
+
+<section><h2>8. Expected Results</h2><ol>
+<li><code>{"status":"ok"}</code>.</li>
+<li>Vite starts on port 5173.</li>
+<li>Account created and you're logged in. No CORS errors in the browser console.</li>
+<li>Log-in succeeds and the trip list loads.</li>
+<li>The trip appears, with one day per date.</li>
+<li>Each change shows immediately and is still there after a page reload.</li>
+<li>A PDF downloads.</li>
+<li>An "AI unavailable" state appears (expected while <code>ai_enabled=false</code>).</li>
+<li>The trip disappears from the list.</li>
+</ol></section>
+
+<section><h2>9. Known Issues and Limitations</h2><ul>
+<li><b>No HTTPS:</b> CloudFront is blocked until AWS verifies the account, so the API runs over plain HTTP and passwords and tokens are unencrypted in transit. The Vercel (HTTPS) frontend can't call this API because browsers block mixed content, so only localhost works for now.</li>
+<li><b>AI disabled:</b> <code>ai_enabled=false</code>. To enable it, set it to true and apply with <code>-var ai_api_key=…</code>, then deploy again.</li>
+<li><b>RDS backups:</b> <s><code>backup_retention_days=0</code></s>. Update 2026-09-24: raised to 1 day, the maximum the AWS free plan allows (7 was rejected with FreeTierRestrictionError). The backend engine now uses <code>pool_pre_ping=True</code>, so the RDS restart this change caused no longer produces a one-off 500 on stale connections.</li>
+<li><b>Test data:</b> test user <code>phase7check_1790252346</code> remains in the database (there's no delete-user endpoint). Its trip was deleted.</li>
+<li><b>CI warnings (not failures):</b> Node 20 deprecation on <code>actions/*@v4</code>, and 2 frontend lint warnings (<code>useDraftPersistence.ts:82</code> setState in an effect, <code>AuthContext.tsx:81</code> fast refresh).</li>
+<li>Git still shows <code>plan.txt</code> as untracked. It isn't committed.</li>
+</ul></section>
+
+<section><h2>10. Verification Status</h2><div class="wrap"><table>
+<tr><th>Item</th><th>Status</th></tr>
+<tr><td>CORS update, deploy workflow fix, migrations</td><td><span class="b ok">IMPLEMENTED</span> <span class="b ok">TESTED</span></td></tr>
+<tr><td>Live API endpoints through the ALB (curl)</td><td><span class="b ok">TESTED</span></td></tr>
+<tr><td>Phase 6 infrastructure (checked by the user earlier)</td><td><span class="b ok">MANUALLY VERIFIED</span></td></tr>
+<tr><td>Localhost frontend in a browser, PDF export</td><td><span class="b warn">UNVERIFIED</span></td></tr>
+<tr><td>AI trip-draft with a real model</td><td><span class="b warn">UNVERIFIED</span> (AI disabled)</td></tr>
+<tr><td>CloudFront / HTTPS</td><td><span class="b bad">UNVERIFIED</span> (blocked by AWS)</td></tr>
+</table></div></section>
+</main></body></html>

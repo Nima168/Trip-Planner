@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Groq AI Provider</title>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--ink:#1d1d1f;--muted:#5f6368;--line:#e2e2de;--ok:#1e7d3a;--okbg:#e5f4e9;--warn:#9a6200;--warnbg:#fdf2dc;--bad:#b3261e;--badbg:#fbe6e4;--accent:#2f5bd3;--code:#f0f0ec}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141416;--card:#1d1d20;--ink:#ececec;--muted:#a0a0a6;--line:#2e2e33;--ok:#6fd08c;--okbg:#17301f;--warn:#f0b64d;--warnbg:#33280f;--bad:#f28b82;--badbg:#3a1a18;--accent:#8ab4f8;--code:#26262a}}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:960px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:1.6rem;margin:0 0 4px}h2{font-size:1.15rem;margin:0 0 12px}
+.sub{color:var(--muted);margin:0 0 24px}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:0 0 16px}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600}
+.wrap{overflow-x:auto}
+code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px;word-break:break-all}
+.b{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+.ok{background:var(--okbg);color:var(--ok)}.warn{background:var(--warnbg);color:var(--warn)}.bad{background:var(--badbg);color:var(--bad)}
+svg text{fill:var(--ink);font:13px system-ui,sans-serif}svg .bx{fill:var(--card);stroke:var(--accent);stroke-width:1.5}svg .sec{fill:var(--warnbg);stroke:var(--warn);stroke-width:1.5}svg .ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+</style>
+</head>
+<body><main>
+<h1>Groq AI Provider</h1>
+<p class="sub">Trip Planner (Musafir) · branch <code>trip_planner.AI</code> · 2026-09-24 · not committed, not applied</p>
+
+<section><h2>1. Original Request</h2>
+<p>Build a Groq adapter for the AI trip-draft feature using GPT-OSS 120B. Then: "keep it Groq only, not Anthropic. Wherever API calling is mentioned, say Groq is used, not Anthropic. Also tell me where to set the API key."</p></section>
+
+<section><h2>2. Implementation Summary</h2>
+<ul>
+<li><code>GroqAdapter</code> calls Groq's OpenAI-compatible chat API with <code>openai/gpt-oss-120b</code>. It forces a single tool call, <code>RESULT_TOOL_SCHEMA</code> (unchanged), and parses the tool call's JSON arguments into the same draft shape the endpoint already validates.</li>
+<li>Settings: <code>max_completion_tokens=4096</code> and <code>reasoning_effort="low"</code>, because this is a reasoning model and its reasoning tokens count toward the limit. <code>max_retries=0</code>, with the existing 20-second timeout.</li>
+<li>Error mapping: a timeout returns 504. Connection errors, 429 and other status codes return 503. Groq's <code>400 tool_use_failed</code>, a bad tool call, JSON that doesn't parse, and a response truncated by the length limit all return 502.</li>
+<li>Anthropic is removed: <code>AnthropicAdapter</code>, the <code>anthropic</code> import and the <code>anthropic==1.6.0</code> dependency are gone. <code>AI_PROVIDER</code> only accepts <code>"groq"</code>, so a leftover <code>anthropic</code> value stops the app at startup.</li>
+<li>Terraform: the prod configuration now has <code>ai_provider</code> (restricted to <code>groq</code>) and <code>ai_model</code> variables, passed to the ECS module; the module defaults are now Groq.</li>
+<li>Specs, <code>CLAUDE.md</code>, <code>PROGRESS.md</code> and the example env files now describe Groq only.</li>
+</ul>
+<div class="wrap"><svg viewBox="0 0 900 120" width="100%" style="min-width:640px" role="img" aria-label="AI request flow">
+<rect class="bx" x="10" y="40" width="130" height="44" rx="8"/><text x="75" y="67" text-anchor="middle">Frontend chat</text>
+<rect class="bx" x="175" y="40" width="190" height="44" rx="8"/><text x="270" y="60" text-anchor="middle">POST /api/v1/ai/trip-draft</text><text x="270" y="76" text-anchor="middle">auth, rate limit</text>
+<rect class="bx" x="400" y="40" width="150" height="44" rx="8"/><text x="475" y="67" text-anchor="middle">GroqAdapter</text>
+<rect class="bx" x="585" y="40" width="170" height="44" rx="8"/><text x="670" y="60" text-anchor="middle">Groq API</text><text x="670" y="76" text-anchor="middle">openai/gpt-oss-120b</text>
+<rect class="sec" x="400" y="0" width="150" height="28" rx="6"/><text x="475" y="19" text-anchor="middle">AI_API_KEY (secret)</text>
+<path class="ln" d="M140 62H175M365 62H400M550 62H585M475 28V40"/>
+<text x="800" y="67" text-anchor="middle">tool call JSON</text>
+</svg></div></section>
+
+<section><h2>Update: follow-up turn failing ("returned something unexpected")</h2>
+<p><b>Symptom (found by the user in local testing):</b> after "I would like to visit goa on next monday alone", the follow-up "yes its on october 3rd" returned 502.</p>
+<p><b>Cause:</b> with forced tool calling, <code>gpt-oss-120b</code> on Groq intermittently produced a malformed tool call (<code>400 tool_use_failed</code>). Replaying that turn failed about 1 time in 4.</p>
+<p><b>Fix:</b> <code>GroqAdapter</code> now asks for the result with Groq's <b>strict JSON-schema structured output</b> (constrained decoding) instead of a tool call. <code>RESULT_SCHEMA</code> closes every object, as strict mode requires. The prompt says to return one JSON object (prompt v2). Every AI failure is now logged with a sanitized reason (field paths and error types, no user text).</p>
+<p><b>Evidence:</b> 6 of 6 live runs of the user's conversation succeeded (about 1.7 s per turn, previously about 3.5 s), and a call through the running local backend returned 200. <code>pytest</code>: 60 passed, including a test that the schema meets strict-mode rules.</p>
+<p><b>Also found:</b> the Groq free tier allows 8,000 tokens per minute. At about 1,400 tokens per turn, that's roughly 5 AI turns per minute; beyond that users see 503 "AI provider unavailable".</p></section>
+
+<section><h2>3. Files Changed</h2><div class="wrap"><table>
+<tr><th>File</th><th>Change</th></tr>
+<tr><td><code>backend/app/services/ai_service.py</code></td><td>Added <code>GroqAdapter</code>; removed <code>AnthropicAdapter</code> and the anthropic import. <code>get_default_adapter()</code> now returns Groq.</td></tr>
+<tr><td><code>backend/app/config.py</code></td><td><code>ai_provider: Literal["groq"] = "groq"</code>, <code>ai_model = "openai/gpt-oss-120b"</code></td></tr>
+<tr><td><code>backend/app/services/ai_prompts.py</code>, <code>backend/app/routers/ai.py</code></td><td>Prompt v2 returns one JSON object; <code>RESULT_SCHEMA</code> is strict-mode compatible; sanitized warning logs on AI failures.</td></tr>
+<tr><td><code>backend/requirements.txt</code></td><td>Added <code>groq==1.7.0</code>; removed <code>anthropic==1.6.0</code></td></tr>
+<tr><td><code>backend/tests/test_ai_groq_adapter.py</code> (new)</td><td>14 adapter and settings tests, with the Groq client mocked</td></tr>
+<tr><td><code>backend/.env.example</code></td><td>Groq provider, model and key note</td></tr>
+<tr><td><code>backend/.env</code> (gitignored, local)</td><td><code>AI_PROVIDER=groq</code>, <code>AI_MODEL=openai/gpt-oss-120b</code>. The key line wasn't touched.</td></tr>
+<tr><td><code>infra/environments/prod/variables.tf</code>, <code>main.tf</code></td><td>New <code>ai_provider</code> (validated as <code>groq</code>) and <code>ai_model</code> variables, passed to the ECS module; key description updated.</td></tr>
+<tr><td><code>infra/modules/ecs/variables.tf</code></td><td>Defaults are now <code>groq</code> / <code>openai/gpt-oss-120b</code></td></tr>
+<tr><td><code>infra/environments/prod/terraform.tfvars</code> (gitignored), <code>terraform.tfvars.example</code></td><td><code>ai_provider = "groq"</code>, <code>ai_model = "openai/gpt-oss-120b"</code></td></tr>
+<tr><td><code>specs_new/AI-spec.md</code>, <code>backend-spec.md</code>, <code>api-contract-spec.md</code></td><td>Provider, model, SDK, token cap, budget and data-handling text now says Groq only.</td></tr>
+<tr><td><code>CLAUDE.md</code>, <code>PROGRESS.md</code></td><td>Groq only; test counts; how to enable AI.</td></tr>
+</table></div></section>
+
+<section><h2>4. Acceptance Criteria</h2><div class="wrap"><table>
+<tr><th>Criterion</th><th>Status</th></tr>
+<tr><td>Groq adapter using <code>openai/gpt-oss-120b</code> with a forced structured tool call</td><td><span class="b ok">Met</span></td></tr>
+<tr><td>Groq errors mapped to the endpoint's existing 502/503/504 behaviour</td><td><span class="b ok">Met</span></td></tr>
+<tr><td>Anthropic code and dependency removed; Groq is the only provider</td><td><span class="b ok">Met</span></td></tr>
+<tr><td>Docs and specs say only Groq is used for API calls</td><td><span class="b ok">Met</span> (the only remaining "anthropic" text is a test proving it's rejected)</td></tr>
+<tr><td>Real call to Groq with a live key</td><td><span class="b ok">Met</span>: 2 live calls through the real prompt and adapter (local key)</td></tr>
+<tr><td>Deployed to AWS</td><td><span class="b warn">Not done</span>: waiting on your go-ahead and key</td></tr>
+</table></div></section>
+
+<section><h2>5. Tests Executed and Results</h2><div class="wrap"><table>
+<tr><th>Check</th><th>Result</th></tr>
+<tr><td><code>pytest</code>: 58 tests (the 44 existing ones plus 14 new Groq adapter tests)</td><td><span class="b ok">Passed</span></td></tr>
+<tr><td>Groq tests: correct request shape (system message, forced tool_choice, model); missing or other tool call; non-JSON arguments; truncated response; timeout; connection error; 429; <code>tool_use_failed</code>; other 400; default adapter; settings defaults; <code>anthropic</code>/<code>grok</code> rejected</td><td><span class="b ok">Passed</span></td></tr>
+<tr><td>Tests run with the <code>anthropic</code> package uninstalled from the venv</td><td><span class="b ok">Passed</span> (proves nothing still imports it)</td></tr>
+<tr><td>Repo-wide search for anthropic/claude/haiku (excluding history, <code>specs_old</code> and the venv)</td><td><span class="b ok">Clean</span></td></tr>
+<tr><td><code>terraform fmt</code> / <code>validate</code></td><td><span class="b ok">Passed</span></td></tr>
+<tr><td>Live Groq call: "Solo trip to Goa from Oct 1 to Oct 3"</td><td><span class="b ok">Passed</span> in 3.5 s: full draft (Goa, 2026-10-01 to 10-03, solo), nothing missing</td></tr>
+<tr><td>Live Groq call: "somewhere warm next month"</td><td><span class="b ok">Passed</span> in 2.7 s: no guessing, all 4 fields missing, asks a clarifying question</td></tr>
+<tr><td><code>terraform plan</code></td><td><span class="b ok">Only the ECS task definition is replaced</span> (1 add, 1 destroy)</td></tr>
+</table></div></section>
+
+<section><h2>6. Exact Page / URL to Test</h2>
+<ul>
+<li>Local: <code>http://localhost:5173/trips/new</code> (AI chat), backend <code>http://localhost:8000/api/v1/ai/trip-draft</code></li>
+<li>AWS: <code>http://musafir-alb-1646923822.us-east-1.elb.amazonaws.com/api/v1/ai/trip-draft</code></li>
+</ul></section>
+
+<section><h2>7. Step-by-Step Manual Verification</h2><ol>
+<li>Create a key at <code>https://console.groq.com/keys</code>.</li>
+<li>Local: in <code>backend/.env</code>, set <code>AI_API_KEY=gsk_...</code> and <code>AI_ENABLED=true</code>, then restart uvicorn.</li>
+<li>Open <code>/trips/new</code> and type "Solo trip to Goa from Oct 1 to Oct 3".</li>
+<li>Type a vague message, e.g. "somewhere warm next month".</li>
+<li>AWS: in PowerShell, <code>$env:TF_VAR_ai_api_key = "gsk_..."</code>, set <code>ai_enabled = true</code> in <code>terraform.tfvars</code>, then run <code>terraform apply</code> and deploy.</li>
+</ol></section>
+
+<section><h2>8. Expected Results</h2><ol>
+<li>A key starting <code>gsk_</code>.</li>
+<li>The backend starts with no settings error.</li>
+<li>The draft fills in destination, dates and type, and a reply asks for confirmation.</li>
+<li>The assistant asks a clarifying question instead of guessing.</li>
+<li><code>/ai/trip-draft</code> returns 200 with a draft, not 503.</li>
+</ol></section>
+
+<section><h2>9. Known Issues and Limitations</h2><ul>
+<li><b>Deploy order matters:</b> the live ECS task definition still sets <code>AI_PROVIDER=anthropic</code>. Apply Terraform before pushing this code; otherwise the new container fails at startup and the deploy's health check fails.</li>
+<li><b>Every later <code>terraform apply</code></b> needs <code>TF_VAR_ai_api_key</code> set once AI is enabled. Without it, the stored key is overwritten with an empty value.</li>
+<li><code>backend/.env</code> has a valid Groq key (checked: <code>gsk_</code> prefix, 56 characters, live calls succeed). <code>AI_ENABLED</code> is still <code>false</code> there.</li>
+<li>Only 2 live Groq calls so far (both good, about 3 s each). Reliability of the forced tool call across the full range of chat scenarios hasn't been measured.</li>
+<li>Groq's free tier has per-minute and per-day limits; hitting them returns 503 "AI provider unavailable".</li>
+<li>The 1,024-token cap in the original spec became 4,096 for the reasoning model; recorded in <code>AI-spec.md</code>.</li>
+</ul></section>
+
+<section><h2>10. Verification Status</h2><div class="wrap"><table>
+<tr><th>Item</th><th>Status</th></tr>
+<tr><td>Groq adapter, Groq-only config, Terraform variables, docs</td><td><span class="b ok">IMPLEMENTED</span> <span class="b ok">TESTED</span> (mocked)</td></tr>
+<tr><td>Real Groq call (local)</td><td><span class="b ok">TESTED</span> (2 live calls)</td></tr>
+<tr><td>Real Groq call on AWS</td><td><span class="b warn">UNVERIFIED</span></td></tr>
+<tr><td>AI chat in the browser</td><td><span class="b warn">UNVERIFIED</span></td></tr>
+<tr><td>Production deploy</td><td><span class="b warn">UNVERIFIED</span> (not applied or pushed)</td></tr>
+</table></div></section>
+</main></body></html>

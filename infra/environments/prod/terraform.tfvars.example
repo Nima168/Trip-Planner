@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars (gitignored) and fill in real values, or pass
+# these as -var flags / TF_VAR_ environment variables instead.
+
+aws_region  = "us-east-1"
+project     = "musafir"
+environment = "prod"
+
+# Decode a real GitHub Actions OIDC token (see infra/README.md) to get this
+# exact sub claim — do not guess the OWNER/REPO form.
+github_oidc_sub = "repo:OWNER@12345/REPO@67890:ref:refs/heads/trip_planner.AI"
+
+# The deployed Vercel production domain. Preview-domain (*.vercel.app) CORS
+# handling is application-side, not a literal wildcard here.
+allowed_origins = "https://musafir-trip-planner.vercel.app,http://localhost:5173"
+
+ai_enabled  = false
+ai_provider = "groq"
+ai_model    = "openai/gpt-oss-120b"
+# ai_api_key is intentionally left out — pass via TF_VAR_ai_api_key or
+# -var so it never lands in a committed file, even a gitignored one.

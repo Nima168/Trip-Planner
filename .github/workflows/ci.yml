@@ -3,6 +3,7 @@ name: CI
 "on":
   push:
   pull_request:
+  workflow_call: {} # lets deploy.yml run this as its test gate
 
 jobs:
   backend:
@@ -11,6 +12,22 @@ jobs:
     defaults:
       run:
         working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: musafir
+          POSTGRES_PASSWORD: musafir
+          POSTGRES_DB: musafir
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -21,10 +38,23 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - run: pip install -r requirements.txt
+
       - run: pytest
 
+      # The test suite above runs against an in-memory SQLite engine
+      # (tests/conftest.py), so it never exercises Alembic against real
+      # Postgres. This smoke step proves the migration chain actually
+      # applies (and reverses) cleanly on Postgres — round-tripping up to
+      # head and back to base, the same check done manually in Phase 1.
+      - name: Alembic migration round-trip (Postgres)
+        env:
+          DATABASE_URL: postgresql+psycopg://musafir:musafir@localhost:5432/musafir
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+
   frontend:
-    name: Frontend tests
+    name: Frontend checks
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -39,4 +69,6 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - run: npm ci
+      - run: npm run lint
       - run: npm test
+      - run: npm run build

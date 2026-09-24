@@ -30,3 +30,14 @@ def client():
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+def signup(client, username="alice", password="hunter22"):
+    resp = client.post("/api/v1/auth/signup", json={"username": username, "password": password})
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def auth_headers(client, username="alice", password="hunter22"):
+    token = signup(client, username, password)["access_token"]
+    return {"Authorization": f"Bearer {token}"}

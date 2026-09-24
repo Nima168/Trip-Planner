@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Musafir Travels — Phase 7 (CI/CD) Verification Report</title>
+<style>
+  :root {
+    --bg: #0f1420; --surface: #161d2e; --surface2: #1d2740; --border: #2a3654;
+    --text: #e7ecf7; --text-muted: #93a0bf; --primary: #5b8def; --ok: #3ecf8e;
+    --warn: #f2b84b; --bad: #f2554b; --mono: 'Consolas','SF Mono',Menlo,monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+  }
+  header { padding: 28px 32px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, var(--surface2), var(--bg)); }
+  header h1 { margin: 0 0 6px; font-size: 22px; }
+  header p { margin: 0; color: var(--text-muted); font-size: 14px; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 32px 80px; }
+  section { margin-bottom: 36px; }
+  h2 {
+    font-size: 15px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text-muted); border-bottom: 1px solid var(--border);
+    padding-bottom: 8px; margin: 0 0 16px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  code, .mono { font-family: var(--mono); font-size: 13px; background: var(--surface2); padding: 1px 6px; border-radius: 4px; }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-size: 12.5px; }
+  ul, ol { padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pass { background: rgba(62,207,142,.15); color: var(--ok); }
+  .fail { background: rgba(242,85,75,.15); color: var(--bad); }
+  .unverified { background: rgba(242,184,75,.15); color: var(--warn); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
+  .callout { border-left: 3px solid var(--warn); background: rgba(242,184,75,.08); padding: 12px 16px; border-radius: 0 8px 8px 0; }
+  .found { border-left: 3px solid var(--primary); background: rgba(91,141,239,.08); padding: 12px 16px; border-radius: 0 8px 8px 0; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+  .status-list td:first-child { white-space: nowrap; font-weight: 600; }
+  svg text { fill: var(--text); font-family: -apple-system, Segoe UI, sans-serif; }
+  .diagram-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Musafir Travels — Phase 7: CI/CD (GitHub Actions)</h1>
+  <p>Verification report generated 2026-09-23 · Branch <code>trip_planner.AI</code> · Plan: <code>cheeky-inventing-thacker.md</code></p>
+</header>
+<main>
+
+<section>
+  <h2>1. Original Request</h2>
+  <div class="card">
+    <p>Continuing the approved 8-phase plan after Phase 6 (AWS infrastructure, code-only/unverified — see the earlier <code>VERIFICATION-REPORT.html</code>), the user said: <strong>"proceed to the next step please if there's any manual set up required, please let me know."</strong> — i.e. build <strong>Phase 7: CI/CD</strong>, and flag any manual setup that's still needed.</p>
+  </div>
+</section>
+
+<section>
+  <h2>2. Implementation Summary</h2>
+  <p>Extended <code>.github/workflows/ci.yml</code> and added <code>.github/workflows/deploy.yml</code>, per <code>specs_new/backend-spec.md</code> §9's CI/CD contract.</p>
+  <ul>
+    <li><strong>ci.yml</strong> — backend job now runs against a real Postgres 16 service container: the pytest suite itself still uses in-memory SQLite (unchanged, <code>tests/conftest.py</code>), but a new step runs <code>alembic upgrade head</code> then <code>downgrade base</code> against the Postgres container, proving the migration chain round-trips cleanly on the real engine. The frontend job gained <code>npm run lint</code> and <code>npm run build</code> alongside the existing <code>npm test</code>. Added a <code>workflow_call</code> trigger so <code>deploy.yml</code> can reuse this whole workflow as its test gate instead of duplicating steps.</li>
+    <li><strong>deploy.yml</strong> — triggered on push to <code>trip_planner.AI</code> and via <code>workflow_dispatch</code> (needed for a no-code-change redeploy after <code>infra/scripts/restore.sh</code>). Pipeline: <code>test</code> (calls <code>ci.yml</code>) → <code>build-and-push</code> (OIDC into AWS, build the backend Docker image tagged with the commit SHA, push to ECR) → <code>migrate</code> (runs <code>alembic upgrade head</code> as a one-off Fargate task using that new image, waits for it to stop, fails the job if its exit code isn't 0) → <code>deploy</code> (registers a new ECS task definition revision pointing at the new image, updates the service, waits for <code>services-stable</code>, then curls the CloudFront health URL). No AWS access keys — auth is via the OIDC deploy role from Phase 6.</li>
+  </ul>
+  <div class="found">
+    <strong>Two real bugs found and fixed while cross-checking the new CI/CD code against the actual app code (not just against the spec):</strong>
+    <ol style="margin:8px 0 0;">
+      <li><code>infra/modules/ecs/main.tf</code> was injecting a container env var named <code>ALLOWED_ORIGINS</code> (copying <code>backend-spec.md</code>'s loose wording literally), but the backend's actual <code>app/config.py</code>/<code>.env.example</code> reads <code>CORS_ORIGINS</code> — pydantic-settings' default env-var mapping. Left as written, the deployed container would have silently fallen back to <code>config.py</code>'s CORS default (<code>http://localhost:5173</code>) and rejected every request from the real Vercel frontend. Fixed.</li>
+      <li><code>backend/entrypoint.sh</code> ran <code>alembic upgrade head</code> inline on every container start — a leftover pattern that directly conflicts with the plan's explicit design (a one-off migration ECS task, precisely <em>because</em> in-entrypoint migrations race when several tasks start concurrently during a rolling deploy). Removed the inline migration; <code>deploy.yml</code>'s <code>migrate</code> job now owns it exclusively.</li>
+    </ol>
+  </div>
+  <p>Also added two Terraform root outputs (<code>ecs_private_subnet_ids</code>, <code>ecs_security_group_id</code>) so the deploy workflow's one-off migration task launches into the same private-subnet/security-group network as the running service, and documented the 9 required GitHub Actions repository Variables in <code>infra/README.md</code> (all sourced from <code>terraform output</code> after Phase 6's apply).</p>
+</section>
+
+<section>
+  <h2>3. Files Changed</h2>
+  <table>
+    <tr><th>Path</th><th>Change</th></tr>
+    <tr><td class="mono">.github/workflows/ci.yml</td><td>Modified — Postgres service container + Alembic round-trip step, frontend lint/build, <code>workflow_call</code> trigger</td></tr>
+    <tr><td class="mono">.github/workflows/deploy.yml</td><td>New — test → build/push → migrate → deploy → health-check pipeline</td></tr>
+    <tr><td class="mono">infra/modules/ecs/main.tf</td><td>Bug fix — <code>ALLOWED_ORIGINS</code> → <code>CORS_ORIGINS</code></td></tr>
+    <tr><td class="mono">infra/environments/prod/outputs.tf</td><td>+ <code>ecs_private_subnet_ids</code>, <code>ecs_security_group_id</code></td></tr>
+    <tr><td class="mono">infra/README.md</td><td>+ "GitHub Actions deploy pipeline setup" section</td></tr>
+    <tr><td class="mono">backend/entrypoint.sh</td><td>Bug fix — removed inline <code>alembic upgrade head</code></td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>Pipeline flow</h2>
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 920 220" width="100%" xmlns="http://www.w3.org/2000/svg" font-size="12.5">
+      <defs>
+        <marker id="arrow7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#5b8def"/>
+        </marker>
+      </defs>
+      <rect x="10" y="70" width="130" height="70" rx="8" fill="#1d2740" stroke="#2a3654"/>
+      <text x="75" y="100" text-anchor="middle" font-weight="600">push to</text>
+      <text x="75" y="118" text-anchor="middle" fill="#93a0bf" font-size="11">trip_planner.AI</text>
+
+      <rect x="170" y="70" width="130" height="70" rx="8" fill="#161d2e" stroke="#2a3654"/>
+      <text x="235" y="100" text-anchor="middle" font-weight="600">test</text>
+      <text x="235" y="118" text-anchor="middle" fill="#93a0bf" font-size="11">reuses ci.yml</text>
+
+      <rect x="330" y="70" width="150" height="70" rx="8" fill="#161d2e" stroke="#2a3654"/>
+      <text x="405" y="94" text-anchor="middle" font-weight="600">build-and-push</text>
+      <text x="405" y="112" text-anchor="middle" fill="#93a0bf" font-size="11">docker build/push</text>
+      <text x="405" y="128" text-anchor="middle" fill="#93a0bf" font-size="11">tag = commit SHA</text>
+
+      <rect x="510" y="70" width="150" height="70" rx="8" fill="#161d2e" stroke="#2a3654"/>
+      <text x="585" y="94" text-anchor="middle" font-weight="600">migrate</text>
+      <text x="585" y="112" text-anchor="middle" fill="#93a0bf" font-size="11">one-off ECS task</text>
+      <text x="585" y="128" text-anchor="middle" fill="#93a0bf" font-size="11">alembic upgrade head</text>
+
+      <rect x="690" y="70" width="150" height="70" rx="8" fill="#161d2e" stroke="#2a3654"/>
+      <text x="765" y="94" text-anchor="middle" font-weight="600">deploy</text>
+      <text x="765" y="112" text-anchor="middle" fill="#93a0bf" font-size="11">new task def + update</text>
+      <text x="765" y="128" text-anchor="middle" fill="#93a0bf" font-size="11">service, wait, health-check</text>
+
+      <line x1="140" y1="105" x2="168" y2="105" stroke="#5b8def" stroke-width="1.6" marker-end="url(#arrow7)"/>
+      <line x1="300" y1="105" x2="328" y2="105" stroke="#5b8def" stroke-width="1.6" marker-end="url(#arrow7)"/>
+      <line x1="480" y1="105" x2="508" y2="105" stroke="#5b8def" stroke-width="1.6" marker-end="url(#arrow7)"/>
+      <line x1="660" y1="105" x2="688" y2="105" stroke="#5b8def" stroke-width="1.6" marker-end="url(#arrow7)"/>
+
+      <text x="460" y="30" text-anchor="middle" fill="#93a0bf" font-size="11">workflow_dispatch also enters here (e.g. post-restore redeploy with no code changes)</text>
+    </svg>
+    <p style="color:var(--text-muted); font-size:12px; margin-top:8px;">Each stage is a separate job gated on the previous one succeeding; the pipeline halts (and the previous ECS task definition keeps serving traffic) if <code>migrate</code> or <code>deploy</code> fails.</p>
+  </div>
+</section>
+
+<section>
+  <h2>4. Acceptance Criteria</h2>
+  <table class="status-list">
+    <tr><th>Criterion</th><th>Status</th></tr>
+    <tr><td>ci.yml backend job: Postgres service container</td><td><span class="badge pass">DONE</span></td></tr>
+    <tr><td>ci.yml: <code>alembic upgrade head</code> smoke step</td><td><span class="badge pass">DONE</span></td></tr>
+    <tr><td>ci.yml frontend job: lint/build added alongside test</td><td><span class="badge pass">DONE</span></td></tr>
+    <tr><td>deploy.yml triggered on push to <code>trip_planner.AI</code> + <code>workflow_dispatch</code></td><td><span class="badge pass">DONE</span></td></tr>
+    <tr><td>deploy.yml: test → build image (SHA tag) → OIDC → push ECR → one-off migration task → update service, wait for rollout</td><td><span class="badge pass">DONE (code)</span></td></tr>
+    <tr><td>Frontend deploy stays on Vercel's own integration (no Actions job)</td><td><span class="badge pass">CONFIRMED — none added</span></td></tr>
+    <tr><td>A push to <code>trip_planner.AI</code> produces a green run ending in a healthy ECS rollout</td><td><span class="badge unverified">UNVERIFIED</span></td></tr>
+    <tr><td><code>curl https://&lt;cloudfront-domain&gt;/health</code> → 200 post-deploy</td><td><span class="badge unverified">UNVERIFIED</span></td></tr>
+    <tr><td>Manual <code>workflow_dispatch</code> succeeds standalone</td><td><span class="badge unverified">UNVERIFIED</span></td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>5. Tests Executed and Results</h2>
+  <table>
+    <tr><th>Check</th><th>Result</th><th>Notes</th></tr>
+    <tr><td class="mono">PyYAML parse of ci.yml and deploy.yml</td><td><span class="badge pass">PASS</span></td><td>Both parse; job graphs confirmed (<code>backend</code>/<code>frontend</code>; <code>test</code>/<code>build-and-push</code>/<code>migrate</code>/<code>deploy</code>)</td></tr>
+    <tr><td class="mono">backend pytest suite (44 tests)</td><td><span class="badge pass">PASS</span></td><td>Re-run after editing <code>entrypoint.sh</code>, to confirm nothing else regressed</td></tr>
+    <tr><td class="mono">terraform fmt -recursive -check</td><td><span class="badge pass">PASS</span></td><td>Re-run after the ECS module fix and new outputs</td></tr>
+    <tr><td class="mono">terraform validate</td><td><span class="badge pass">PASS</span></td><td>Re-run after the ECS module fix and new outputs</td></tr>
+    <tr><td>Manual cross-check: infra env var names vs. <code>app/config.py</code>/<code>.env.example</code></td><td><span class="badge pass">DONE</span></td><td>Caught the <code>CORS_ORIGINS</code> mismatch (see Section 2)</td></tr>
+    <tr><td>Real GitHub Actions run of either workflow</td><td><span class="badge unverified">NOT RUN</span></td><td>Requires a push/PR plus, for <code>deploy.yml</code>, Phase 6's AWS infra actually applied and the 9 repository Variables set</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>6. Exact Page / URL to Test</h2>
+  <div class="card">
+    <p>No live URL yet — Phase 6's infra hasn't been applied. Once it has and the repository Variables are set (Section 7), trigger the pipeline either by pushing to <code>trip_planner.AI</code> or via:</p>
+    <pre>gh workflow run deploy.yml</pre>
+    <p style="color:var(--text-muted)">Watch progress at the repo's <strong>Actions</strong> tab. The pipeline's own final step curls <code>&lt;API_BASE_URL without /api/v1&gt;/health</code>.</p>
+  </div>
+</section>
+
+<section>
+  <h2>7. Step-by-Step Manual Verification</h2>
+  <p class="callout"><strong>Manual setup required before this pipeline can run at all</strong> — none of it was done in this session (no AWS account access here):</p>
+  <ol>
+    <li>Complete Phase 6's manual steps in full: the one-time bootstrap in <code>infra/README.md</code>, then <code>terraform apply</code> from <code>infra/environments/prod</code>.</li>
+    <li>In the GitHub repo: <strong>Settings → Secrets and variables → Actions → Variables tab</strong>, add all 9 variables listed in <code>infra/README.md</code>'s new "GitHub Actions deploy pipeline setup" section, using the corresponding <code>terraform output</code> values (join <code>ecs_private_subnet_ids</code> with commas, no spaces).</li>
+    <li>Push a commit to <code>trip_planner.AI</code> (or run <code>gh workflow run deploy.yml</code>) and open the Actions tab.</li>
+    <li>Confirm the <code>test</code> job (running <code>ci.yml</code>) goes green.</li>
+    <li>Confirm <code>build-and-push</code> pushes an image tagged with the commit SHA — check the ECR repository in the AWS Console.</li>
+    <li>Confirm <code>migrate</code>'s one-off task exits 0. If it fails, check CloudWatch Logs under <code>/ecs/musafir-backend</code> for that task.</li>
+    <li>Confirm <code>deploy</code> registers a new task definition revision, the service reaches steady state, and the final <code>curl</code> to <code>/health</code> returns <code>200</code>.</li>
+    <li>Separately, open a PR against any branch and confirm <code>ci.yml</code>'s Postgres-backed Alembic round-trip step and the frontend <code>lint</code>/<code>build</code> steps run and pass.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>8. Expected Results</h2>
+  <table>
+    <tr><th>Step</th><th>Expected result</th></tr>
+    <tr><td>2</td><td>All 9 variables present under the repo's Actions Variables tab, no typos in ARNs/ids</td></tr>
+    <tr><td>4</td><td><code>test</code> job green within a few minutes</td></tr>
+    <tr><td>5</td><td>New image with a SHA-matching tag visible in the ECR repository</td></tr>
+    <tr><td>6</td><td>Migration task status <code>STOPPED</code>, container exit code <code>0</code></td></tr>
+    <tr><td>7</td><td>ECS service <code>runningCount == desiredCount</code> on the new task definition revision; final curl returns <code>200</code></td></tr>
+    <tr><td>8</td><td>PR check shows green <code>backend</code> and <code>frontend</code> jobs, including the new Postgres/Alembic and lint/build steps</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>9. Known Issues and Limitations</h2>
+  <ul>
+    <li><strong>Nothing here has executed end-to-end</strong> — it depends on Phase 6's AWS infra actually being live, which it isn't yet in this session.</li>
+    <li>The <code>migrate</code> job's container override assumes the ECS container is literally named <code>backend</code> (matches <code>infra/modules/ecs</code>'s <code>local.container_name</code>) — if that name is ever changed on one side, the other must change too.</li>
+    <li>No automatic rollback on a failed deploy: <code>aws ecs wait services-stable</code> will time out and fail the job, but the previous task definition revision keeps serving traffic until someone manually points the service back at it — there's no automated revert.</li>
+    <li>OIDC auth will fail with a generic-looking <code>AssumeRoleWithWebIdentity</code> error if <code>github_oidc_sub</code> (Phase 6) isn't the exact debug-token-derived value — a stale or guessed value is a likely first failure mode.</li>
+    <li>Single environment only — every merge to <code>trip_planner.AI</code> deploys straight to the one <code>prod</code> stack, per the plan's explicit no-staging-tier decision.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>10. Verification Status</h2>
+  <div class="grid">
+    <div class="card"><strong>IMPLEMENTED</strong><p style="color:var(--text-muted); margin:6px 0 0;"><code>ci.yml</code> extended, <code>deploy.yml</code> written, two real bugs found and fixed in the surrounding infra/app code, README updated with the required GitHub Actions Variables.</p></div>
+    <div class="card"><strong>TESTED</strong><p style="color:var(--text-muted); margin:6px 0 0;">Both workflow files parse as valid YAML; the full backend pytest suite (44 tests) still passes; <code>terraform fmt</code>/<code>validate</code> pass after the infra edits.</p></div>
+    <div class="card"><strong>MANUALLY VERIFIED</strong><p style="color:var(--text-muted); margin:6px 0 0;"><span class="badge fail">NOT DONE</span> — no real GitHub Actions run of either workflow has executed.</p></div>
+    <div class="card"><strong>UNVERIFIED</strong><p style="color:var(--text-muted); margin:6px 0 0;">End-to-end pipeline behavior against real AWS: image build/push, the migration task, the ECS rollout, and the final health check — see Section 7 for the steps to close this out, which start with completing Phase 6.</p></div>
+  </div>
+</section>
+
+</main>
+</body>
+</html>

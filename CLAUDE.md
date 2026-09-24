@@ -1,45 +1,91 @@
-# Trip Planner
+# Musafir Travels (Trip Planner)
+
+Trip planner with user accounts, manual and AI-assisted trip creation, and PDF export.
+Active branch: `trip_planner.AI`. `master` still holds the deprecated v1 app (SQLite, share links, weather widget).
 
 ## Stack
 
-- **Frontend:** React (Vite)
-- **Backend:** FastAPI (Python)
-- **Database:** a relational database (TBD — not yet provisioned)
+- **Frontend:** React 19 + TypeScript + Vite, Tailwind CSS v3, TanStack Query, React Router, jsPDF (client-side PDF)
+- **Backend:** FastAPI (Python 3.12), SQLAlchemy 2.0 + Alembic, JWT auth (PyJWT + passlib/bcrypt)
+- **Database:** PostgreSQL 16 (psycopg driver); local via Docker, production on AWS RDS
+- **AI:** Anthropic Claude Haiku (`claude-haiku-4-5-20251001`) via the `anthropic` SDK, behind a swappable `ProviderAdapter`
+- **Infra:** AWS via Terraform: VPC, ALB, ECS Fargate, RDS, ECR, Secrets Manager, GitHub OIDC deploy role; CloudFront module exists but is disabled
+- **CI/CD:** GitHub Actions (`ci.yml` on every push/PR; `deploy.yml` on push to `trip_planner.AI`)
 
 ## Directory layout
 
 ```
 trip-planner/
-├── backend/          # FastAPI app
-│   ├── .venv/        # Python virtual environment (gitignored)
-│   ├── main.py        # App entrypoint, GET /health
+├── backend/
+│   ├── app/
+│   │   ├── main.py            # FastAPI app, CORS, routers under /api/v1, GET /health
+│   │   ├── config.py          # pydantic-settings (reads .env)
+│   │   ├── database.py        # engine (pool_pre_ping), SessionLocal, get_db
+│   │   ├── models.py          # User, Trip, Day, Activity
+│   │   ├── errors.py          # generic 500 handler
+│   │   ├── routers/           # auth, trips, activities, ai
+│   │   ├── schemas/           # pydantic request/response models
+│   │   └── services/          # auth_service, ai_service, ai_prompts
+│   ├── alembic/               # migrations (run by deploy.yml, not on container start)
+│   ├── tests/                 # pytest, needs Postgres
+│   ├── Dockerfile, entrypoint.sh
 │   └── requirements.txt
-├── frontend/         # React app (Vite)
+├── frontend/
 │   └── src/
-├── specs/
-│   ├── frontend-spec.md   # Frontend spec (TBD)
-│   ├── backend-spec.md    # Backend spec (TBD)
-│   └── api-contract.md    # API contract between frontend and backend (TBD)
+│       ├── api/               # fetch client, TanStack Query hooks, AI calls
+│       ├── auth/              # AuthContext (token in localStorage), ProtectedRoute
+│       ├── components/        # DayPlanner, TripChat, TripDraftReview, PrintButton, ...
+│       ├── hooks/             # useDraftPersistence (AI chat draft restore)
+│       ├── pages/             # Home (/trips), NewTrip, TripItinerary, Login, Signup
+│       └── types/, utils/
+├── infra/
+│   ├── environments/prod/     # root Terraform config (tfvars/backend.hcl gitignored)
+│   ├── modules/               # network, alb, ecs, database, ecr, iam-oidc, cdn
+│   ├── scripts/               # backup.sh, destroy.sh, restore.sh
+│   └── README.md              # bootstrap, usage, GitHub variables, cost notes
+├── specs_new/                 # authoritative specs
+├── specs_old/                 # v1 specs (reference only)
+├── docs/architecture/         # Archify architecture diagram
+├── .github/workflows/         # ci.yml, deploy.yml
+├── PROGRESS.md                # build log
 └── CLAUDE.md
 ```
 
 ## Specs
 
-- [Frontend spec](specs/frontend-spec.md) — TBD
-- [Backend spec](specs/backend-spec.md) — TBD
-- [API contract](specs/api-contract.md) — TBD
+`specs_new/` is authoritative; `specs_old/` describes v1 only.
+
+- [Goal](specs_new/goal-spec.md)
+- [Frontend](specs_new/frontend-spec.md)
+- [Backend](specs_new/backend-spec.md)
+- [API contract](specs_new/api-contract-spec.md)
+- [AI](specs_new/AI-spec.md)
 
 ## Running locally
+
+### Database (Postgres in Docker)
+
+```
+docker run -d --name musafir-postgres -p 5432:5432 ^
+  -e POSTGRES_USER=musafir -e POSTGRES_PASSWORD=musafir -e POSTGRES_DB=musafir postgres:16
+```
+
+If the container already exists: `docker start musafir-postgres`.
 
 ### Backend
 
 ```
 cd backend
+copy .env.example .env        # then edit as needed
 .venv\Scripts\activate
+pip install -r requirements.txt
+alembic upgrade head
 uvicorn main:app --reload
 ```
 
-Serves `GET /health` → `{"status": "ok"}` at http://localhost:8000/health.
+- Health: http://localhost:8000/health
+- API: http://localhost:8000/api/v1 (docs at http://localhost:8000/docs)
+- AI is off unless `AI_ENABLED=true` and `AI_API_KEY` are set in `backend/.env`.
 
 ### Frontend
 
@@ -49,4 +95,25 @@ npm install
 npm run dev
 ```
 
-Serves the placeholder page at http://localhost:5173/.
+Serves http://localhost:5173. `VITE_API_BASE_URL` (in `frontend/.env`) selects the backend:
+- `http://localhost:8000/api/v1` for the local backend
+- `http://musafir-alb-1646923822.us-east-1.elb.amazonaws.com/api/v1` for AWS (works from localhost only; see Deployment)
+
+### Tests and checks
+
+- Backend: `cd backend && pytest` (needs the local Postgres above)
+- Frontend: `npm test` (Vitest), `npm run lint` (oxlint), `npm run build` (tsc + Vite)
+
+## Deployment
+
+- **Backend:** push to `trip_planner.AI` → `deploy.yml` runs CI → builds image to ECR (tagged with the commit SHA) → registers a task definition revision → runs `alembic upgrade head` as a one-off ECS task → updates the ECS service → checks `/health`. Needs 9 repository Variables (see `infra/README.md`).
+- **Infra changes:** `terraform plan` / `apply` from `infra/environments/prod`. Terraform ignores the ECS service's `task_definition`, so a CORS or env change only takes effect on the next deploy.
+- **API URL:** `http://musafir-alb-1646923822.us-east-1.elb.amazonaws.com/api/v1` (HTTP only).
+
+## Known constraints
+
+- **CloudFront disabled:** AWS blocks new CloudFront resources until the account is verified. Until then the API is HTTP-only through the ALB, so an HTTPS frontend (Vercel) can't call it because of mixed content. To re-enable, uncomment `module "cdn"` and its output in `infra/environments/prod`.
+- **AWS free plan:** RDS backup retention is capped at 1 day.
+- **AI disabled in production:** `ai_enabled = false` in `terraform.tfvars`.
+- **Business rules vs. request validation:** business rules return 400 and are enforced in routers (empty activity text, `end_date` before `start_date`); request-shape errors return 422 from pydantic. Keep that split.
+- **Ownership:** another user's resources return 404, not 403.

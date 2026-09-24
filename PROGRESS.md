@@ -2,7 +2,121 @@
 
 Tracks what's been built so far against the approved build plan (see plan history / `CLAUDE.md`). Updated as work lands.
 
-## Specs (`specs/`)
+The project is in its second version. **v2 (Musafir Travels, branch `trip_planner.AI`)** is a full replacement built from `specs_new/` and is logged first. The **v1 log** (branch `master`) is kept unchanged below it as history.
+
+---
+
+# v2 — Musafir Travels (`trip_planner.AI`)
+
+Last updated: 2026-09-24.
+
+## Status by phase
+
+| Phase | Scope | Status |
+|---|---|---|
+| 0 | Groundwork: `specs_new/` adopted as authoritative, decisions recorded | Done |
+| 1 | Backend data model + auth | Done |
+| 2 | Backend Trip/Day/Activity CRUD | Done |
+| 3 | Backend AI trip-draft endpoint | Done |
+| 4 | Frontend rewrite (TypeScript, Tailwind, TanStack Query) | Done |
+| 5 | Frontend AI chat flow + PDF export | Done |
+| 6 | AWS infrastructure (Terraform) | Done, manually verified. CloudFront disabled (see below) |
+| 7 | CI/CD | Done: pipeline passing, live API tested, localhost frontend manually verified |
+| 8 | Cutover & decommission | Not started (mostly blocked on CloudFront) |
+
+## Decisions (confirmed with user)
+
+- **Full replacement, not additive:** v1 code deleted outright and v1 data discarded (no migration).
+- **Cloud and model:** stay on AWS and Anthropic (Render and Grok were considered and rejected).
+- **AWS now:** AWS migration done in this build, not deferred.
+- **Deploy branch:** `trip_planner.AI`, with a fresh Vercel project until cutover.
+- **Trip details form:** required fields are marked `*` (replacing the earlier "Still needed" note).
+- **PDF button:** renamed from "Print" to **"Save as PDF"**. It and **Delete** now show on every trip, including trips with no activities (previously hidden until the first activity existed). `frontend-spec.md` updated to match.
+
+## Backend (`backend/`)
+
+- **Data model** (`app/models.py`): `User`, `Trip` (destination, start/end date, `trip_type` enum solo/couple/family/group_of_friends, owner), `Day` (day_number, date), `Activity` (text, sort_order). One Alembic migration: `2c81e85d2b55_initial_schema_users_trips_days_`.
+- **Database:** Postgres only. Locally a `musafir-postgres` Docker container; in production RDS. `database.py` uses `pool_pre_ping=True` (see the RDS entry below for why).
+- **Auth** (`routers/auth.py`, `services/auth_service.py`): signup and login return a JWT. Passwords are hashed with bcrypt. `get_current_user` guards every trip/AI route.
+- **Trips/Days/Activities** (`routers/trips.py`, `routers/activities.py`): creating a trip generates one Day per date. Another user's resources return 404, not 403.
+  - **Business rules return 400** and are enforced in routers: `end_date` before `start_date`, empty activity text.
+  - **Request-shape errors return 422** from pydantic.
+- **AI trip draft** (`routers/ai.py`, `services/ai_service.py`, `services/ai_prompts.py`): `POST /api/v1/ai/trip-draft` takes the chat history, the current draft, a reference date and a timezone, and returns an updated draft.
+  - Claude Haiku is called through a `ProviderAdapter` protocol using a tool-use structured result, so tests can swap in a fake provider.
+  - An in-memory per-process rate limit applies.
+  - Returns 503 "AI is currently unavailable" when `AI_ENABLED=false` or on provider errors.
+- **Tests:** 44 pytest tests (auth 7, trips 11, activities 10, AI 16) against Postgres. Green locally and in CI.
+
+## Frontend (`frontend/`)
+
+- **Stack:** React 19 + TypeScript + Vite + Tailwind v3 + TanStack Query.
+- **Routes:** `/login`, `/signup`, `/trips` (home), `/trips/new`, `/trips/:tripId`.
+- **Auth** (`auth/AuthContext.tsx`): the token and username are stored in `localStorage`. A 401 logs the user out.
+  - **Bug found and fixed during Phase 7 manual testing:** a page refresh logged the user out. The token was handed to the API client inside a `useEffect`, and React runs child effects first, so the first query after a refresh went out with no `Authorization` header, got a 401 and triggered logout. The token is now set synchronously (state initializer, login, logout).
+  - Regression test `AuthContext.test.tsx` fails on the old code and passes on the fix.
+- **Trip itinerary:** days expand to add, edit and delete free-text activities. Save as PDF uses jsPDF client-side with a plain per-day list; empty days print "(no activities planned)".
+- **AI chat flow** (`TripChat`, `TripDraftReview`, `hooks/useDraftPersistence.ts`): a chat-first new-trip flow with a review step.
+  - Drafts persist in `localStorage`, namespaced per API URL and username and validated on restore.
+  - Stale responses are dropped via a request-version counter plus an AbortController.
+- **Checks:** 3 Vitest tests. `oxlint` has 0 errors and 2 known warnings. `npm run build` is clean.
+
+## Infrastructure (`infra/`, Terraform)
+
+- **Modules:** `network` (VPC, private subnets, NAT), `alb`, `ecs` (Fargate service + task definition), `database` (RDS Postgres `db.t4g.micro`, private, reachable only from the ECS security group), `ecr`, `iam-oidc` (GitHub Actions deploy role), `cdn` (CloudFront, currently disabled).
+- **Secrets:** stored in Secrets Manager, including the AI key (a placeholder when `ai_enabled=false`).
+- **Phase 6 manual verification (by user):** 43 resources created.
+  - RDS is available, not publicly accessible, and direct access from a PC is blocked.
+  - The ECR image is present.
+  - ECS is active: 1 desired, 1 running, 0 pending, rollout COMPLETED.
+  - ALB → ECS → `/health` returns 200.
+- **CloudFront blocked:** `CreateDistribution` returns 403 "Your account must be verified before you can add new CloudFront resources" (request ID `e6f897ad-a7d2-402a-bfb2-5504772c6758`).
+  - The `cdn` module is commented out.
+  - `api_base_url` points at the ALB over HTTP: `http://musafir-alb-1646923822.us-east-1.elb.amazonaws.com/api/v1`.
+- **CORS:** `allowed_origins` = `https://musafir-travels.vercel.app,http://localhost:5173`.
+- **RDS backups:** raised from 0 to 1 day. 7 days was rejected with `FreeTierRestrictionError`; the account's free plan caps it at 1.
+  - Applying the change restarted RDS (`apply_immediately = true`). The first request on each stale pooled connection then returned 500 (`AdminShutdown`).
+  - Fixed with SQLAlchemy `pool_pre_ping=True`. A local simulation (killing a pooled connection on the server) fails without the flag and succeeds with it.
+
+## CI/CD (`.github/workflows/`)
+
+- **`ci.yml`:** on every push and PR. Backend: pytest against a Postgres 16 service container, plus an Alembic `upgrade head` → `downgrade base` round-trip. Frontend: lint, test, build. Also callable by `deploy.yml`.
+- **`deploy.yml`:** on push to `trip_planner.AI` or manual dispatch. Runs CI → builds and pushes the image to ECR (SHA tag) → registers a new task definition revision → runs `alembic upgrade head` as a one-off ECS task → updates the ECS service → checks `/health`. Authenticates to AWS via OIDC. Uses 9 repository Variables (see `infra/README.md`); no secrets.
+- **Bug found and fixed:** the first real run failed because `aws ecs run-task` can't override a container's `image`. Registering the revision moved into the migrate job; the migration runs on it and the deploy job rolls out the same revision.
+- **Earlier fixes:** `ALLOWED_ORIGINS` renamed to `CORS_ORIGINS`, which is what the backend reads. `entrypoint.sh` no longer runs migrations on every container start.
+- **Runs green:** `35997566002`, `36001016339`, `36005307935`.
+
+## Live verification (2026-09-24, against the ALB)
+
+- **Health and CORS:** `/health` 200. CORS allows localhost and Vercel and rejects other origins.
+- **Auth:** signup 201; duplicate signup 400; login returns a token; wrong password 401; no token 401.
+- **Trips and activities:** creating a trip builds one day per date; end-before-start 400. Add, edit and delete activity; empty activity 400.
+- **Delete:** deleting a trip returns 204; a later GET returns 404.
+- **AI:** trip-draft returns 503 (AI disabled, as designed).
+- **Manual (user):** localhost frontend against AWS works: sign up and log in, stay logged in after refresh, trip CRUD, Save as PDF.
+- **Reports:** `infra/VERIFICATION-REPORT-phase7-deploy.html`, `frontend/VERIFICATION-REPORT-auth-refresh-pdf.html`.
+
+## What's left
+
+- **Blocked on AWS:**
+  - Account verification for CloudFront/HTTPS.
+  - Account plan upgrade for more than 1 day of RDS backups.
+- **Phase 8:**
+  - Set the Anthropic budget cap and data-retention policy, then enable AI (`ai_enabled=true` + key).
+  - Full live test: AI chat scenarios, draft restore after refresh, account isolation.
+  - Point Vercel's `VITE_API_BASE_URL` at CloudFront, swap the production domain, then shut down Render after a quiet period.
+  - Confirm the v1 SQLite data was discarded.
+- **Cleanup:**
+  - Remove test user `phase7check_1790252346` from production.
+  - Delete or ignore `infra/environments/prod/plan.txt`.
+  - Address the CI deprecation warnings (Node 20 actions, Ubuntu 26 runner migration) and the 2 lint warnings.
+
+---
+
+# v1 log (historical, `master` branch)
+
+Everything below describes the original app, which v2 replaces.
+
+## Specs (`specs/`, now `specs_old/`)
 
 - `goal-spec.md` — the original goal/constraints/acceptance criteria (given, not authored here).
 - `frontend-spec.md` — screens (Trip List, Itinerary Editor, Share View), user flow, loading/empty/error states, maps/weather widget failure handling.

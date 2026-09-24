@@ -37,8 +37,6 @@ export function TripItineraryPage() {
     );
   }
 
-  const hasAnyActivity = trip.days.some((day) => day.activities.length > 0);
-
   return (
     <AppShell>
       <Link to="/trips" className="mb-4 inline-block text-sm text-primary hover:underline">
@@ -52,12 +50,10 @@ export function TripItineraryPage() {
             {formatDateRange(trip.start_date, trip.end_date)} · {TRIP_TYPE_LABELS[trip.trip_type]}
           </p>
         </div>
-        {hasAnyActivity && (
-          <div className="flex items-center gap-2">
-            <PrintButton trip={trip} />
-            <DeleteTripButton tripId={trip.id} />
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <PrintButton trip={trip} />
+          <DeleteTripButton tripId={trip.id} />
+        </div>
       </div>
 
       <div className="flex flex-col gap-3">

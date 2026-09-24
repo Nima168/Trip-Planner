@@ -55,7 +55,7 @@ export function PrintButton({ trip }: { trip: Trip }) {
       onClick={handlePrint}
       className="rounded border border-border px-3 py-1 text-sm text-text hover:border-primary hover:text-primary"
     >
-      Print
+      Save as PDF
     </button>
   );
 }

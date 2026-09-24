@@ -50,7 +50,7 @@ src/
 | Signup | `/signup` | Create a username/password account | none (POST credentials) |
 | Home | `/trips` | "Welcome to Musafir Travels" header; "Add New Trip" button; "Trip Plan" list of the user's saved trips (destination + date range per row) | `GET /trips` (list of Trip summaries) |
 | New Trip | `/trips/new` | Approved chat-first trip entry with editable review and manual-form fallback; chat confirmation after review (or “Create trip” button); “← Back to Trips” navigation (see §12) | `POST /ai/trip-draft` per chat turn; existing `POST /trips` on confirmation |
-| Trip Itinerary | `/trips/:tripId` | One screen, two states (per mockup): right after creation it shows empty Day 1…Day N ready for activities; once activities exist it shows Destination/dates, Day 1…Day N with activity previews, plus Delete and Print actions; a "← Back to Trips" link returns to `/trips` | `GET /trips/:tripId` (Trip incl. Itinerary/Days/Activities) |
+| Trip Itinerary | `/trips/:tripId` | One screen, two states (per mockup): right after creation it shows empty Day 1…Day N ready for activities; once activities exist it shows Day 1…Day N with activity previews. Destination/dates and the Delete and "Save as PDF" actions are always shown, even for a trip with no activities yet; a "← Back to Trips" link returns to `/trips` | `GET /trips/:tripId` (Trip incl. Itinerary/Days/Activities) |
 
 **Navigation requirement (added after first manual QA pass):** every authenticated page needs an explicit way back to Home — a single AppShell header isn't enough on its own to satisfy this. Two affordances, both required: (1) the "Musafir Travels" title in `AppShell` is a link to `/trips` on every authenticated page; (2) `/trips/new` and `/trips/:tripId` additionally show an explicit "← Back to Trips" link, since they're one level deep from Home and a bare logo-link is easy to miss.
 
@@ -63,7 +63,7 @@ src/
 - `NewTripForm` — manual entry and fallback on `/trips/new`: From date, To date, Destination, Trip Type. Approved AI flow reuses these fields for review; explicit submission calls create-trip and navigates to `/trips/:tripId` (see §12).
 - `DayPlanner` — renders one `Day` (Day N, its date) with its `ActivityInput` list; tapping a day expands it to add/edit activities for that day
 - `ActivityInput` — single free-text activity row within a `DayPlanner`, with delete
-- `PrintButton` — triggers client-side PDF generation of the current trip's itinerary (labeled "Print" per mockup); layout is a plain text list per day (trip destination/dates as a header, each Day as a heading with its activities as a bullet list) — no app branding/styling in the PDF for MVP
+- `PrintButton` — triggers client-side PDF generation of the current trip's itinerary (labeled "Save as PDF"; the mockup's "Print" label was renamed for discoverability); layout is a plain text list per day (trip destination/dates as a header, each Day as a heading with its activities as a bullet list) — no app branding/styling in the PDF for MVP
 - `DeleteTripButton` — deletes the current trip (with a confirm step) and navigates back to `/trips`
 - `ProtectedRoute` — route wrapper that redirects to `/login` when there's no authenticated session
 
@@ -79,10 +79,10 @@ src/
 - **Login:** User enters username/password on `/login` → submit → on success, store token in `AuthContext`/`localStorage` and redirect to `/trips` (Home). On failure, show inline error.
 - **View trips (Home):** User lands on `/trips` after login and sees "Welcome to Musafir Travels," an "Add New Trip" button, and their saved trips as `TripListItem` rows under "Trip Plan"; clicking a row opens that trip's itinerary.
 - **Create a trip (approved enhancement):** From Home, click “Add New Trip” → `/trips/new` → describe the trip in chat and answer clarifications, or choose manual entry → review/edit destination, dates, and trip type → confirm in chat or click “Create trip” → existing API creates the trip → navigate to `/trips/:tripId`, showing empty Day 1…Day N. Details in §12.
-- **Plan a day:** On `/trips/:tripId`, tapping a `DayPlanner` (Day N) expands it to show its `ActivityInput` list → user types an activity and it saves (on blur or explicit "Add" action) → activity appears in that day's list, and the itinerary now shows as a "saved trip" (Delete/Print become available).
+- **Plan a day:** On `/trips/:tripId`, tapping a `DayPlanner` (Day N) expands it to show its `ActivityInput` list → user types an activity and it saves (on blur or explicit "Add" action) → activity appears in that day's list.
 - **Edit/delete an activity:** User edits an activity's text inline, or clicks delete on an `ActivityInput` row → change is saved/removed immediately.
 - **Delete a trip:** On `/trips/:tripId`, user clicks `DeleteTripButton` ("Delete") → confirms → trip is removed and the user is navigated back to `/trips`.
-- **Export itinerary to PDF:** On `/trips/:tripId`, user clicks `PrintButton` ("Print") → client generates a PDF from the current itinerary data and triggers a browser download.
+- **Export itinerary to PDF:** On `/trips/:tripId`, user clicks `PrintButton` ("Save as PDF") → client generates a PDF from the current itinerary data and triggers a browser download.
 - **Logout:** User clicks logout in `AppShell` → clear `AuthContext`/`localStorage` → redirect to `/login`.
 
 ## 7. UI/UX Requirements

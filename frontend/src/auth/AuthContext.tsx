@@ -26,7 +26,15 @@ function readStoredValue(key: string): string | null {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => readStoredValue(STORAGE_TOKEN_KEY));
+  // The API client's token is set synchronously (here and in login/logout), not
+  // in an effect: child effects run before this provider's, so the first queries
+  // after a page refresh would otherwise go out without the Authorization header,
+  // get a 401, and log the user out.
+  const [token, setToken] = useState<string | null>(() => {
+    const stored = readStoredValue(STORAGE_TOKEN_KEY);
+    setAuthToken(stored);
+    return stored;
+  });
   const [username, setUsername] = useState<string | null>(() =>
     readStoredValue(STORAGE_USERNAME_KEY),
   );
@@ -39,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (usernameRef.current) {
       clearStoredDraft(usernameRef.current);
     }
+    setAuthToken(null);
     setToken(null);
     setUsername(null);
     try {
@@ -51,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback((newToken: string, newUsername: string) => {
+    setAuthToken(newToken);
     setToken(newToken);
     setUsername(newUsername);
     try {
@@ -60,10 +70,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Session still works for this tab; it just won't survive a refresh.
     }
   }, []);
-
-  useEffect(() => {
-    setAuthToken(token);
-  }, [token]);
 
   useEffect(() => {
     setUnauthorizedHandler(logout);

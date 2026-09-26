@@ -157,6 +157,13 @@ Last updated: 2026-09-24.
 - The user deleted the old Vercel project `trip-planner` (`trip-planner-two-beta.vercel.app` now returns `404 DEPLOYMENT_NOT_FOUND`) and **suspended** the Render backend (`trip-planner-4tgv.onrender.com` shows "Service Suspended"). Suspending is reversible; delete the Render service for good once nothing is needed.
 - The live v2 app was checked afterwards: the site returns 200 and `/api` reaches the backend.
 
+## Documentation (2026-09-26)
+
+- Added `README.md` for showcasing the project: features, stack, architecture diagram (`docs/architecture/architecture.png`, cropped from the Archify render), an AI-flow sequence diagram, setup, configuration, API, test results, deployment and limitations.
+- Screenshots in `docs/screenshots/` were taken on the live site with a throwaway account. Its trips were deleted through the API and the account with a one-off ECS task, and its login now returns 401.
+- HTML reports are now local-only: `FINAL-REPORT.html`, `PROJECT-REPORT.html` and every `VERIFICATION-REPORT*.html` are gitignored and were removed from the repo (still on disk, still in git history).
+- Checks re-run: backend 69 passed, frontend 8 passed, lint 0 errors, build clean, live `/health` 200.
+
 ## What's left
 
 - **Blocked on AWS:**

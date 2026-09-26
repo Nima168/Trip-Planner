@@ -18,3 +18,9 @@ frontend/dist/
 
 # TypeScript build cache
 *.tsbuildinfo
+
+# Local-only reports (never pushed)
+PROJECT-REPORT.html
+FINAL-REPORT.html
+**/VERIFICATION-REPORT*.html
+**/EXECUTION-REPORT*.html

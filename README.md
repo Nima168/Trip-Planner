@@ -21,6 +21,7 @@ Plan a trip by describing it in plain English (or Hinglish). An AI assistant tur
 - [Testing](#testing)
 - [Deployment](#deployment)
 - [Future improvements](#future-improvements)
+- [License](#license)
 
 ## Why this project
 
@@ -258,6 +259,10 @@ GitHub Actions signs in to AWS through OIDC, so no AWS keys are stored in GitHub
 - **Multi-destination trips:** several stops in one trip, each with its own dates
 - **Scaling:** a shared rate-limit store (e.g. Redis) and autoscaling for the backend
 - **Faster loading:** split the frontend bundle so each page loads only the code it needs
+
+## License
+
+Released under the [MIT License](LICENSE).
 
 ---
 

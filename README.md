@@ -2,8 +2,6 @@
 
 Plan a trip by describing it in plain English (or Hinglish). An AI assistant turns your message into a trip draft (destination, dates and trip type) for you to review. You then plan each day and save the itinerary as a PDF.
 
-**Live demo:** https://musafir-trip-planner.vercel.app (sign up with any username; no email needed)
-
 ![Trip itinerary](docs/screenshots/itinerary.png)
 
 ---
@@ -22,14 +20,11 @@ Plan a trip by describing it in plain English (or Hinglish). An AI assistant tur
 - [API](#api)
 - [Testing](#testing)
 - [Deployment](#deployment)
-- [Known limitations](#known-limitations)
 - [Future improvements](#future-improvements)
 
 ## Why this project
 
 Travellers usually spread their plans across notes apps, spreadsheets and chat threads, which makes an itinerary hard to keep organised and hard to use on the road. Musafir keeps each trip in one place, with one card per day, and produces a clean PDF when the plan is done.
-
-It's a solo project that goes from written specs to a production deployment: a typed React frontend, a FastAPI backend with its own test suite, an LLM feature with structured output, AWS infrastructure written in Terraform, and a CI/CD pipeline that deploys every push.
 
 ## Key features
 
@@ -78,14 +73,11 @@ It's a solo project that goes from written specs to a production deployment: a t
 
 ![Architecture diagram](docs/architecture/architecture.png)
 
-*An interactive version of this diagram is in [docs/architecture/musafir-v2.architecture.html](docs/architecture/musafir-v2.architecture.html). It was made with Archify.*
-
 - The **browser** only talks to **Vercel** over HTTPS. Vercel serves the React app and forwards `/api/*` requests to the AWS load balancer.
 - **FastAPI** runs as a container on **ECS Fargate** in private subnets. It checks the JWT on every trip and AI request.
 - **PostgreSQL on RDS** sits in private subnets and accepts connections only from the ECS service.
 - **Secrets Manager** supplies the database URL, the JWT secret and the Groq key to the container when it starts. No secrets are in the code or the image.
 - **GitHub Actions** signs in to AWS through **OIDC**, so there are no stored AWS keys. It pushes an image tagged with the commit to **ECR** and rolls it out to ECS.
-- **CloudFront** is written in Terraform but not deployed yet (see [Known limitations](#known-limitations)).
 
 ## How it works
 
@@ -109,7 +101,7 @@ sequenceDiagram
     API-->>FE: trip with one Day per date
 ```
 
-- **Structured output.** The model must answer in a strict JSON schema, and Groq enforces it while generating. An earlier version used forced tool calls, which failed on about 1 in 4 follow-up turns; strict schemas fixed that and roughly halved the response time.
+- **Structured output.** The model must answer in a strict JSON schema, and Groq enforces it while generating, so every reply parses reliably (about 1.7 s per turn).
 - **Swappable provider.** The model is called through a small `ProviderAdapter` interface, so tests replace Groq with a fake and never touch the network.
 - **Rate limits.** When Groq or the per-user limit returns 429, the API passes `Retry-After` through to the browser, which shows a countdown.
 - **The user stays in control.** The draft is only a suggestion. Nothing is saved until the user presses **Create trip** or confirms in the chat.
@@ -140,7 +132,7 @@ trip-planner/
 │   │   ├── hooks/           draft persistence for the AI chat
 │   │   └── pages/           Home, NewTrip, TripItinerary, Login, Signup
 │   └── vercel.json          SPA routing + /api proxy
-├── infra/                   Terraform (see infra/README.md)
+├── infra/                   Terraform
 │   ├── environments/prod/   root module
 │   ├── modules/             network, alb, ecs, database, ecr, iam-oidc, cdn
 │   └── scripts/             backup, destroy, restore
@@ -184,11 +176,11 @@ npm run dev
 
 Open http://localhost:5173 and create an account.
 
-> **Enable the AI assistant locally:** get a free API key from [console.groq.com](https://console.groq.com/keys), then set `AI_ENABLED=true` and `AI_API_KEY=<your key>` in `backend/.env` and restart the backend. Without a key, the manual entry form still works.
+> **Enable the AI assistant locally:** create a Groq API key at console.groq.com, then set `AI_ENABLED=true` and `AI_API_KEY=<your key>` in `backend/.env` and restart the backend. Without a key, the manual entry form still works.
 
 ## Configuration
 
-**Backend** (`backend/.env`, template in [`.env.example`](backend/.env.example)):
+**Backend** (`backend/.env`, copied from `backend/.env.example`):
 
 | Variable | Purpose | Default |
 |---|---|---|
@@ -203,7 +195,7 @@ Open http://localhost:5173 and create an account.
 
 **Frontend** (`frontend/.env`): `VITE_API_BASE_URL` is `http://localhost:8000/api/v1` locally and `/api/v1` in production, where it goes through the Vercel proxy.
 
-In production, secrets live in **AWS Secrets Manager** and are never committed. Terraform variables are described in [`terraform.tfvars.example`](infra/environments/prod/terraform.tfvars.example).
+In production, secrets live in **AWS Secrets Manager** and are never committed.
 
 ## API
 
@@ -230,8 +222,6 @@ All routes are under `/api/v1`. Every route except signup and login needs `Autho
 - **429:** a rate limit was hit; the response includes `Retry-After`.
 - **502, 503, 504:** the AI provider had a problem.
 
-The full contract is in [`specs_new/api-contract-spec.md`](specs_new/api-contract-spec.md).
-
 ## Testing
 
 ```bash
@@ -247,35 +237,27 @@ cd frontend && npm test && npm run lint && npm run build
 | Frontend: `tsc` + Vite production build | passes |
 | CI: Alembic `upgrade head` → `downgrade base` round-trip | passes on every push |
 
-The Groq tests mock the SDK, so the suite never calls the network. The app has also been tested by hand on the live site: sign-up and login, staying logged in after a refresh, creating trips with the AI and by hand, rejecting past dates, the rate-limit countdown, editing activities, and Save as PDF.
+The Groq tests mock the SDK, so the suite never calls the network. The deployed app has also been tested by hand: sign-up and login, staying logged in after a refresh, creating trips with the AI and by hand, rejecting past dates, the rate-limit countdown, editing activities, and Save as PDF.
 
 ## Deployment
 
 | Part | Where | How |
 |---|---|---|
-| Frontend | Vercel project `musafir-trip-planner` | Builds automatically on push to `trip_planner.AI` |
-| Backend | AWS ECS Fargate (`us-east-1`) | `deploy.yml`: run CI → build and push the image to ECR → register a task definition → run `alembic upgrade head` as a one-off task → roll the service → check `/health` |
-| Infrastructure | Terraform, remote state in S3 with a DynamoDB lock | `terraform apply` from `infra/environments/prod` |
+| Frontend | Vercel | Builds automatically on every push |
+| Backend | AWS ECS Fargate | GitHub Actions tests the code, builds the image, runs database migrations and rolls out the new version |
+| Infrastructure | Terraform | All AWS resources are defined in `infra/` |
 
-GitHub Actions signs in to AWS with an **OIDC role** that only it can assume, so no AWS keys are stored in GitHub. [`infra/README.md`](infra/README.md) covers the one-time bootstrap, the repository variables and the scripts for tearing the stack down and restoring it.
-
-## Known limitations
-
-- **CloudFront not deployed yet.** AWS blocks new CloudFront distributions until the account is verified. Until then Vercel proxies `/api` to the load balancer: the browser still uses HTTPS end to end, but the hop from Vercel to AWS is plain HTTP. That's fine for a demo but not for real users.
-- **Groq free tier.** It allows about 5 AI turns per minute across all users. Past that, users see the countdown.
-- **Per-process rate limiter.** The per-user AI limit is kept in memory, so running more than one backend task would need a shared store such as Redis.
-- **Cost when idle.** The NAT Gateway and load balancer are billed by the hour. Use `infra/scripts/destroy.sh` (which takes a snapshot first) and `restore.sh` between demo sessions.
-- **Backups.** The AWS Free plan limits automatic RDS backups to 1 day, so `backup.sh` takes manual snapshots as well.
-- **Username-only accounts.** Sign-up doesn't verify an email address and there's no password reset.
+GitHub Actions signs in to AWS through OIDC, so no AWS keys are stored in GitHub.
 
 ## Future improvements
 
-- Turn on CloudFront (HTTPS all the way to AWS) and a custom domain
-- Email sign-up and password reset
-- Share an itinerary with a read-only link
-- Suggested activities for each day, based on destination and trip type
-- A shared rate-limit store and autoscaling for the backend
-- Split the frontend bundle into smaller chunks (the main bundle is about 740 kB)
+- **CloudFront and a custom domain:** HTTPS all the way to AWS (the Terraform module is already written)
+- **Email accounts:** email sign-up, verification and password reset
+- **Shareable itineraries:** a read-only link for travel companions
+- **Activity suggestions:** AI-suggested activities for each day, based on destination and trip type
+- **Multi-destination trips:** several stops in one trip, each with its own dates
+- **Scaling:** a shared rate-limit store (e.g. Redis) and autoscaling for the backend
+- **Faster loading:** split the frontend bundle so each page loads only the code it needs
 
 ---
 

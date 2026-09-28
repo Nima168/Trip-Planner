@@ -169,7 +169,7 @@ Last updated: 2026-09-24.
 
 - To stop the hourly AWS charges while the app is idle: ECR emptied (10 images), RDS snapshot `musafir-manual-20260928T182730Z` taken, then `destroy.sh` destroyed all 43 resources (exit 0). The Deploy workflow is disabled; CI still runs.
 - **The app is offline:** the Vercel site loads, but `/api` returns 502.
-- Kept on purpose: 3 RDS manual snapshots, `musafir/db-master-password-persistent`, and the Terraform state bucket and lock table. The Groq key secret was deleted with the stack.
+- Kept on purpose: RDS snapshot `musafir-manual-20260928T182730Z` (the two older Sep 24 snapshots were deleted), `musafir/db-master-password-persistent`, and the Terraform state bucket and lock table. The Groq key secret was deleted with the stack.
 - **To restore:** set `TF_VAR_ai_api_key` to the real Groq key, run `scripts/restore.sh -var-file=terraform.tfvars`, re-enable and run `deploy.yml`, then point the `/api` rewrite in `frontend/vercel.json` at the new ALB host.
 
 ## What's left

@@ -119,7 +119,7 @@ Last updated: 2026-09-24.
 - **Delete:** deleting a trip returns 204; a later GET returns 404.
 - **AI:** trip-draft returns 503 (AI disabled, as designed).
 - **Manual (user):** localhost frontend against AWS works: sign up and log in, stay logged in after refresh, trip CRUD, Save as PDF.
-- **Reports:** `infra/VERIFICATION-REPORT-phase7-deploy.html`, `frontend/VERIFICATION-REPORT-auth-refresh-pdf.html`.
+- **Reports:** `reports/VERIFICATION-REPORT-phase7-deploy.html`, `reports/VERIFICATION-REPORT-auth-refresh-pdf.html` (local only).
 
 ## Production rollout (2026-09-25)
 
@@ -163,6 +163,14 @@ Last updated: 2026-09-24.
 - Screenshots in `docs/screenshots/` were taken on the live site with a throwaway account. Its trips were deleted through the API and the account with a one-off ECS task, and its login now returns 401.
 - HTML reports are now local-only: `FINAL-REPORT.html`, `PROJECT-REPORT.html` and every `VERIFICATION-REPORT*.html` are gitignored and were removed from the repo (still on disk, still in git history).
 - Checks re-run: backend 69 passed, frontend 8 passed, lint 0 errors, build clean, live `/health` 200.
+- All local HTML reports now live in `reports/`, which is gitignored as a whole.
+
+## AWS stack torn down (2026-09-28)
+
+- To stop the hourly AWS charges while the app is idle: ECR emptied (10 images), RDS snapshot `musafir-manual-20260928T182730Z` taken, then `destroy.sh` destroyed all 43 resources (exit 0). The Deploy workflow is disabled; CI still runs.
+- **The app is offline:** the Vercel site loads, but `/api` returns 502.
+- Kept on purpose: 3 RDS manual snapshots, `musafir/db-master-password-persistent`, and the Terraform state bucket and lock table. The Groq key secret was deleted with the stack.
+- **To restore:** set `TF_VAR_ai_api_key` to the real Groq key, run `scripts/restore.sh -var-file=terraform.tfvars`, re-enable and run `deploy.yml`, then point the `/api` rewrite in `frontend/vercel.json` at the new ALB host.
 
 ## What's left
 

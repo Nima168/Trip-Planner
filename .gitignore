@@ -19,7 +19,9 @@ frontend/dist/
 # TypeScript build cache
 *.tsbuildinfo
 
-# Local-only reports (never pushed)
+# Local-only reports (never pushed). Keep every report in reports/;
+# the name patterns below also catch any report saved elsewhere by mistake.
+reports/
 PROJECT-REPORT.html
 FINAL-REPORT.html
 **/VERIFICATION-REPORT*.html

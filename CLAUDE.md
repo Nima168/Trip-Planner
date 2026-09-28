@@ -48,9 +48,12 @@ trip-planner/
 ├── specs_old/                 # v1 specs (reference only)
 ├── docs/architecture/         # Archify architecture diagram
 ├── .github/workflows/         # ci.yml, deploy.yml
+├── reports/                   # local-only HTML reports (gitignored, never pushed)
 ├── PROGRESS.md                # build log
 └── CLAUDE.md
 ```
+
+Save every new HTML report (project, execution, verification) in `reports/`.
 
 ## Specs
 

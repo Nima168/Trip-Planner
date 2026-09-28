@@ -101,7 +101,7 @@ npm run dev
 
 Serves http://localhost:5173. `VITE_API_BASE_URL` (in `frontend/.env`) selects the backend:
 - `http://localhost:8000/api/v1` for the local backend
-- `http://musafir-alb-1646923822.us-east-1.elb.amazonaws.com/api/v1` for AWS (works from localhost only; see Deployment)
+- the AWS load balancer's `/api/v1` URL, when the AWS stack is running (see Deployment)
 
 ### Tests and checks
 
@@ -110,9 +110,19 @@ Serves http://localhost:5173. `VITE_API_BASE_URL` (in `frontend/.env`) selects t
 
 ## Deployment
 
+**Current state: the AWS stack is torn down** (since 2026-09-28, to stop hourly charges). The Vercel frontend still loads, but `/api` returns 502. The Deploy workflow is disabled; CI still runs. Data is kept in RDS snapshot `musafir-manual-20260928T182730Z`, and the secret `musafir/db-master-password-persistent` is kept for the restore.
+
+**To restore:**
+1. `export TF_VAR_ai_api_key=<Groq key>` (the key secret was deleted with the stack).
+2. From `infra/environments/prod`: `../../scripts/restore.sh -var-file=terraform.tfvars`.
+3. `gh workflow enable deploy.yml` then `gh workflow run deploy.yml --ref trip_planner.AI` (ECR comes back empty).
+4. Put the new ALB host (`terraform output api_base_url`) in the `/api/*` rewrite in `frontend/vercel.json` and push, so Vercel redeploys.
+
+When the stack is running:
+
 - **Backend:** push to `trip_planner.AI` → `deploy.yml` runs CI → builds image to ECR (tagged with the commit SHA) → registers a task definition revision → runs `alembic upgrade head` as a one-off ECS task → updates the ECS service → checks `/health`. Needs 9 repository Variables (see `infra/README.md`).
 - **Infra changes:** `terraform plan` / `apply` from `infra/environments/prod`. Terraform ignores the ECS service's `task_definition`, so a CORS or env change only takes effect on the next deploy.
-- **API URL:** `http://musafir-alb-1646923822.us-east-1.elb.amazonaws.com/api/v1` (HTTP only).
+- **API URL:** `terraform output api_base_url` (HTTP only). The ALB DNS name changes on every restore.
 
 ## Known constraints
 
@@ -121,11 +131,8 @@ Serves http://localhost:5173. `VITE_API_BASE_URL` (in `frontend/.env`) selects t
   - **Security caveat:** the hop from Vercel to the ALB is plain HTTP, so it's fine for a demo but not for real users.
   - **Once CloudFront is allowed:** uncomment `module "cdn"` and its output, point `VITE_API_BASE_URL` at the CloudFront URL, and remove the `/api` rewrite.
 - **AWS free plan:** RDS backup retention is capped at 1 day.
-- **AI disabled in production:** `terraform.tfvars` has `ai_enabled = false` with `ai_provider = "groq"` and `ai_model = "openai/gpt-oss-120b"`. To enable it:
-  1. Set the Groq key as `TF_VAR_ai_api_key` in the terminal (never commit it).
-  2. Set `ai_enabled = true`.
-  3. Run `terraform apply`, then deploy. ECS reads the key secret only when a task starts.
-  - **Every later `terraform apply` needs `TF_VAR_ai_api_key` set too.** Without it, Terraform overwrites the stored key with an empty value.
+- **AI in production:** `terraform.tfvars` has `ai_enabled = true`, `ai_provider = "groq"` and `ai_model = "openai/gpt-oss-120b"`. The Groq key comes from `TF_VAR_ai_api_key` (never commit it); ECS reads the key secret only when a task starts.
+  - **Every `terraform apply` needs `TF_VAR_ai_api_key` set to the real key.** Without it, Terraform overwrites the stored key with an empty value.
 - **Business rules vs. request validation:** business rules return 400 and are enforced in routers (empty activity text, `end_date` before `start_date`); request-shape errors return 422 from pydantic. Keep that split.
 - **Ownership:** another user's resources return 404, not 403.
 - **AI rate limits:** both the per-user limit and Groq's quota return 429 with `Retry-After`, which CORS exposes. The chat counts down from it. Groq's free tier allows about 5 turns per minute.

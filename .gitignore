@@ -26,3 +26,6 @@ PROJECT-REPORT.html
 FINAL-REPORT.html
 **/VERIFICATION-REPORT*.html
 **/EXECUTION-REPORT*.html
+
+# Internal build log (kept locally, not published)
+PROGRESS.md

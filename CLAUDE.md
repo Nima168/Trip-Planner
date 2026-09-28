@@ -49,7 +49,7 @@ trip-planner/
 ├── docs/architecture/         # Archify architecture diagram
 ├── .github/workflows/         # ci.yml, deploy.yml
 ├── reports/                   # local-only HTML reports (gitignored, never pushed)
-├── PROGRESS.md                # build log
+├── PROGRESS.md                # build log (local only, gitignored)
 └── CLAUDE.md
 ```
 
